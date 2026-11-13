@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Antirrobo Red Magic</string>
+    <string name="accessibility_service_label">Antirrobo Red Magic</string>
+    <string name="accessibility_service_description">Servicio de accesibilidad del prototipo antirrobo del dueño del teléfono. Detecta el menú de apagado (no puede interceptar el botón de encendido antes que el sistema), muestra la pantalla negra de apagado falso, lee las teclas de volumen para el desbloqueo combinado y ejecuta el apagado real solo con el gesto oculto. Debes activarlo tú, en tu propio dispositivo.</string>
+    <string name="device_admin_label">Administrador Antirrobo</string>
+    <string name="device_admin_description">Ruta opcional de Device Owner (se aprovisiona con adb). No intercepta el botón de encendido por sí sola. Ver el README.</string>
+    <string name="fgs_notification_title">Antirrobo armado</string>
+    <string name="fgs_notification_text">El servicio está activo en este dispositivo. Toca para abrir ajustes.</string>
+    <string name="fgs_channel_name">Servicio antirrobo</string>
+    <string name="fgs_channel_desc">Notificación permanente necesaria para que Android no mate el servicio. Sin sonido.</string>
+</resources>

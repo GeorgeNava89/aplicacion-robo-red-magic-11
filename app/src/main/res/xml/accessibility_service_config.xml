@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  FLAG_REQUEST_FILTER_KEY_EVENTS + canRequestFilterKeyEvents:
+  habilitan onKeyEvent(). En Android sin root, onKeyEvent SÍ recibe
+  las teclas de volumen, pero NO recibe KEYCODE_POWER (el sistema lo
+  consume antes en PhoneWindowManager). Ver README.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeWindowsChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault|flagRetrieveInteractiveWindows|flagRequestFilterKeyEvents|flagIncludeNotImportantViews|flagReportViewIds"
+    android:canRetrieveWindowContent="true"
+    android:canRequestFilterKeyEvents="true"
+    android:canPerformGestures="true"
+    android:notificationTimeout="40"
+    android:description="@string/accessibility_service_description"
+    android:settingsActivity="com.george.antirrobo.MainActivity" />
