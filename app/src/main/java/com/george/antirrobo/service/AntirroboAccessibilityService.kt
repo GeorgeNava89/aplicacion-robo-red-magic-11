@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityWindowInfo
@@ -38,6 +39,7 @@ class AntirroboAccessibilityService : AccessibilityService() {
     private val main = Handler(Looper.getMainLooper())
     private var screenReceiver: ScreenStateReceiver? = null
     private var pendingDismiss: Runnable? = null
+    @Volatile private var lastOwnBackAt = 0L
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -84,7 +86,19 @@ class AntirroboAccessibilityService : AccessibilityService() {
                 // no cambia el volumen, no aparece el panel y no hay "tic" háptico
                 // del paso de volumen. En v0.1.0 isActive quedaba en false por el
                 // bug del overlay, así que el sistema procesaba la tecla y vibraba.
-                return FakeOffController.isActive
+                return FakeOffController.isActive || FakeOffController.isAnimating
+            }
+            KeyEvent.KEYCODE_BACK -> {
+                // v0.1.3: "Atrás" cierra el menú falso como el real. Se ignoran
+                // los BACK que nosotros mismos mandamos al cerrar el menú real.
+                if (FakeOffController.isAnimating) return true
+                val now = SystemClock.uptimeMillis()
+                val shownAt = FakeOffController.decoyShownAt()
+                if (shownAt > 0L && now - lastOwnBackAt > 800L && now - shownAt > 500L) {
+                    if (event.action == KeyEvent.ACTION_UP) FakeOffController.dismissDecoy("Atrás")
+                    return true
+                }
+                return false
             }
             KeyEvent.KEYCODE_POWER, KeyEvent.KEYCODE_SLEEP, KeyEvent.KEYCODE_SOFT_SLEEP -> {
                 // En la práctica, sin root esto casi nunca llega.
@@ -140,6 +154,8 @@ class AntirroboAccessibilityService : AccessibilityService() {
         if (FakeOffController.letPowerDialogThrough) return
         when (action) {
             android.content.Intent.ACTION_SCREEN_OFF -> {
+                // Como el menú real: se cierra si se apaga la pantalla.
+                FakeOffController.dismissDecoy("pantalla apagada")
                 // v0.1.1: el bloqueo normal (pulsación corta / tiempo de pantalla)
                 // ya NO dispara el apagado falso, salvo que actives la opción.
                 if (prefs.screenOffTrigger) {
@@ -165,6 +181,7 @@ class AntirroboAccessibilityService : AccessibilityService() {
      * Sin root no hay forma de impedirlo al 100 %.
      */
     private fun dismissPowerMenuThenFakeOff(reason: String) {
+        lastOwnBackAt = SystemClock.uptimeMillis()
         performGlobalAction(GLOBAL_ACTION_BACK)
         if (Build.VERSION.SDK_INT >= 31) {
             performGlobalAction(GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)
@@ -174,17 +191,18 @@ class AntirroboAccessibilityService : AccessibilityService() {
             if (FakeOffController.letPowerDialogThrough) return@Runnable
             if (anyWindowLooksLikePowerMenu()) {
                 EventLog.i(TAG, "El menú sigue visible; segundo BACK")
+                lastOwnBackAt = SystemClock.uptimeMillis()
                 performGlobalAction(GLOBAL_ACTION_BACK)
                 if (Build.VERSION.SDK_INT >= 31) {
                     performGlobalAction(GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)
                 }
             }
-            FakeOffController.enter(reason)
+            FakeOffController.onPowerMenuDetected(reason)
         }
         pendingDismiss = again
         main.postDelayed(again, 60L)
-        // También entramos de inmediato por si el menú ya se cerró.
-        FakeOffController.enter(reason)
+        // v0.1.3: según el ajuste, menú falso + animación o directo a negro.
+        FakeOffController.onPowerMenuDetected(reason)
     }
 
     /**
@@ -280,6 +298,8 @@ class AntirroboAccessibilityService : AccessibilityService() {
 
         fun matchesPowerMenu(pkg: String, cls: String, text: String): Boolean {
             val pkgL = pkg.lowercase()
+            // Nunca confundir nuestras propias ventanas (menú falso) con el menú real.
+            if (pkgL.startsWith("com.george.antirrobo")) return false
             val clsSimple = cls.substringAfterLast('.')
             val classHit = CLASS_HINTS.any { hint ->
                 cls.contains(hint, ignoreCase = true) || clsSimple.equals(hint, ignoreCase = true)

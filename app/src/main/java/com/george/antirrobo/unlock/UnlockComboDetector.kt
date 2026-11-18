@@ -1,64 +1,50 @@
 package com.george.antirrobo.unlock
 
+import android.os.SystemClock
 import android.view.KeyEvent
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
+import com.george.antirrobo.util.EventLog
 
 /**
- * Combinación de desbloqueo: tecla de volumen mantenida (onKeyEvent del
- * AccessibilityService, que SÍ recibe volumen) + gesto en la pantalla
- * (overlay) al mismo tiempo.
+ * Combinación de desbloqueo: VOLUMEN (arriba o abajo) + deslizar hacia arriba
+ * en el overlay.
  *
- * La ventana de "mantenida" considera presionado desde ACTION_DOWN hasta
- * ACTION_UP, más un margen breve (80 ms) por si el UP llega un instante
- * antes de terminar el swipe.
+ * v0.1.3: antes se exigía que el volumen siguiera presionado EXACTAMENTE al
+ * levantar el dedo (margen de 120 ms). Ahora tecla y toque usan el mismo
+ * reloj (eventTime = uptimeMillis) y basta con que el volumen haya estado
+ * activo en algún momento del deslizamiento (VolumeHoldTracker).
  */
 object UnlockComboDetector {
 
-    private val volumeUpHeld = AtomicBoolean(false)
-    private val volumeDownHeld = AtomicBoolean(false)
-    private val lastVolumeDownAt = AtomicLong(0L)
-    private val lastVolumeUpAt = AtomicLong(0L)
+    private val tracker = VolumeHoldTracker()
 
-    const val HOLD_GRACE_MS = 120L
+    /** v0.1.3: para el indicador de "volumen detectado" de los gestos fantasma. */
+    @Volatile var listener: (() -> Unit)? = null
 
+    @Synchronized
     fun onVolumeKey(event: KeyEvent) {
-        val held = event.action == KeyEvent.ACTION_DOWN || event.action == KeyEvent.ACTION_MULTIPLE
-        val released = event.action == KeyEvent.ACTION_UP
-        when (event.keyCode) {
-            KeyEvent.KEYCODE_VOLUME_UP -> {
-                if (held) {
-                    volumeUpHeld.set(true)
-                    lastVolumeUpAt.set(System.currentTimeMillis())
-                } else if (released) {
-                    volumeUpHeld.set(false)
-                    lastVolumeUpAt.set(System.currentTimeMillis())
-                }
+        val t = event.eventTime.takeIf { it > 0 } ?: SystemClock.uptimeMillis()
+        when (event.action) {
+            KeyEvent.ACTION_DOWN -> {
+                if (event.repeatCount == 0) EventLog.i(TAG, "Volumen DOWN (${KeyEvent.keyCodeToString(event.keyCode)})")
+                tracker.onDown(t)
+                if (event.repeatCount == 0) listener?.invoke()
             }
-            KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                if (held) {
-                    volumeDownHeld.set(true)
-                    lastVolumeDownAt.set(System.currentTimeMillis())
-                } else if (released) {
-                    volumeDownHeld.set(false)
-                    lastVolumeDownAt.set(System.currentTimeMillis())
-                }
+            KeyEvent.ACTION_UP -> {
+                EventLog.i(TAG, "Volumen UP")
+                tracker.onUp(t)
+                listener?.invoke()
             }
         }
     }
 
-    /** Volumen arriba o abajo cuenta, siempre que esté (o acaba de estar) presionado. */
-    fun isVolumeHeld(now: Long = System.currentTimeMillis()): Boolean {
-        if (volumeUpHeld.get() || volumeDownHeld.get()) return true
-        val graceUp = now - lastVolumeUpAt.get() <= HOLD_GRACE_MS
-        val graceDown = now - lastVolumeDownAt.get() <= HOLD_GRACE_MS
-        return graceUp || graceDown
-    }
+    @Synchronized
+    fun volumeActiveDuring(from: Long, to: Long): Boolean = tracker.activeDuring(from, to)
 
-    fun reset() {
-        volumeUpHeld.set(false)
-        volumeDownHeld.set(false)
-        lastVolumeUpAt.set(0L)
-        lastVolumeDownAt.set(0L)
-    }
+    @Synchronized
+    fun isVolumeHeld(): Boolean = tracker.held
+
+    @Synchronized
+    fun reset() = tracker.reset()
+
+    private const val TAG = "Combo"
 }

@@ -101,3 +101,31 @@ Intent.ACTION_SCREEN_OFF -> for (d in longArrayOf(500, 3_000, 10_000, 30_000))
 Intent.ACTION_USER_PRESENT -> nubia.setRgbConfigured(off = false) // devuelve el valor guardado
 // La clave sale del escaneo A/B (LightsDiagnostics.diff()); sin clave no se escribe nada.
 ```
+
+## Gestos v0.1.3 (lógica pura + overlay a pantalla completa real)
+
+```kotlin
+// Overlay: cubrir barras de estado/navegación y recorte (antes no las cubría).
+if (Build.VERSION.SDK_INT >= 30) { fitInsetsTypes = 0; fitInsetsSides = 0
+    layoutInDisplayCutoutMode = LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS }
+
+// Toques con coordenadas absolutas contra el tamaño real de la pantalla.
+val (w, h) = screenSize()   // currentWindowMetrics.bounds
+when (taps.onTap(event.getRawX(i), event.getRawY(i), w, h, event.eventTime)) {
+    TapSequenceDetector.Result.Completed -> onShutdownGesture()   // 25 % por esquina, 3 s entre toques
+    else -> Unit
+}
+// Deslizamiento evaluado también en ACTION_CANCEL; volumen "activo durante" el gesto.
+if (swipe.onEnd(x, y, h, now) == SWIPE_OK &&
+    UnlockComboDetector.volumeActiveDuring(swipe.startTime, now)) onUnlockGesture()
+```
+
+## Menú de apagado falso (v0.1.3)
+
+```kotlin
+fun onPowerMenuDetected(reason: String) {           // tras cerrar el menú real con BACK
+    if (prefs.decoyPowerMenu) showDecoy(reason) else enter(reason)
+}
+// Deslizar → ShutdownAnimation(SHUTDOWN).play(2_200) { enter("menú falso: apagar") }
+// Emergencia → exit(); startActivity(Intent("com.android.phone.EmergencyDialer.DIAL"))
+```

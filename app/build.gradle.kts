@@ -12,8 +12,8 @@ android {
         applicationId = "com.george.antirrobo"
         minSdk = 29
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.1.2"
+        versionCode = 4
+        versionName = "0.1.3"
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -71,4 +71,6 @@ dependencies {
     implementation(libs.play.services.base)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
+
+    testImplementation("junit:junit:4.13.2")
 }

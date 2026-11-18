@@ -11,30 +11,24 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.WindowManager
 import android.accessibilityservice.AccessibilityService
+import com.george.antirrobo.unlock.SwipeUnlockDetector
+import com.george.antirrobo.unlock.TapSequenceDetector
 import com.george.antirrobo.unlock.UnlockComboDetector
 import com.george.antirrobo.util.EventLog
-import kotlin.math.abs
-import kotlin.math.hypot
 
 /**
  * Overlay negro a pantalla completa con TYPE_ACCESSIBILITY_OVERLAY
  * (no requiere permiso de "mostrar sobre otras apps" ni root).
  *
- * Gestos (documentados en el README y en Ajustes):
+ * Gestos (v0.1.3, más tolerantes):
  *
- *  DESBLOQUEO: mantener VOLUMEN (arriba o abajo) y, al mismo tiempo,
- *  deslizar desde el tercio inferior izquierdo hacia arriba al menos
- *  el 45 % de la altura de la pantalla.
+ *  DESBLOQUEO: VOLUMEN (arriba o abajo) presionado en algún momento del
+ *  deslizamiento + deslizar hacia arriba empezando en la mitad inferior
+ *  izquierda, al menos 30 % de la altura. Empieza un poco arriba del borde
+ *  inferior (el borde lo usa la navegación por gestos del sistema).
  *
- *  APAGADO REAL (gesto oculto, multi-punto): tocar en secuencia, con
- *  menos de 2 s entre toques, estas 5 zonas:
- *    1. esquina superior izquierda
- *    2. esquina superior derecha
- *    3. esquina inferior derecha
- *    4. esquina inferior izquierda
- *    5. centro
- *  Entonces se abre el diálogo real de apagado (GLOBAL_ACTION_POWER_DIALOG)
- *  con la bandera que lo deja pasar.
+ *  APAGADO REAL: 5 toques, zonas de 25 % en cada esquina, hasta 3 s entre
+ *  toques: sup-izq → sup-der → inf-der → inf-izq → centro.
  *
  * Un gesto de desbloqueo fallido no alarga el bloqueo: el auto-desbloqueo
  * sigue corriendo.
@@ -46,25 +40,18 @@ class FakeOffOverlay(
     private val onUnlockGesture: () -> Unit,
     private val onShutdownGesture: () -> Unit,
     private val onFailedUnlockAttempt: () -> Unit,
+    /** v0.1.3: "gestos fantasma" (zonas exactas) — ajuste, apagado por defecto. */
+    private val debugHints: Boolean = false,
 ) : View(service) {
 
     private var windowManager: WindowManager? = null
     private var attached = false
     private var params: WindowManager.LayoutParams? = null
 
-    // Swipe de desbloqueo
-    private var swipeStartX = 0f
-    private var swipeStartY = 0f
-    private var swipeStartTime = 0L
-    private var swipeTracking = false
-    private var swipeStartedInUnlockZone = false
-
-    // Secuencia de apagado real
-    private var shutdownStep = 0
-    private var shutdownLastStepAt = 0L
 
     init {
         setBackgroundColor(Color.BLACK)
+        setWillNotDraw(false)
         isClickable = true
         isFocusable = false
         // v0.1.1: cero hápticos y cero sonidos de toque desde el overlay.
@@ -111,6 +98,17 @@ class FakeOffOverlay(
                 layoutInDisplayCutoutMode =
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
+            // v0.1.3 — CAUSA PROBABLE de los gestos fallidos: en Android 11+ una
+            // ventana nueva trae fitInsetsTypes = barras del sistema, así que el
+            // overlay NO cubría la barra de estado ni la de navegación: los
+            // toques en las esquinas superiores caían en la barra de estado y el
+            // borde inferior en la navegación. Ahora cubre TODA la pantalla.
+            if (Build.VERSION.SDK_INT >= 30) {
+                fitInsetsTypes = 0
+                fitInsetsSides = 0
+                layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            }
             silencer.applyWindowBrightnessOff(this)
         }
         params = lp
@@ -146,13 +144,19 @@ class FakeOffOverlay(
 
     fun isShowing(): Boolean = attached
 
-    override fun onAttachedToWindow() {
-        super.onAttachedToWindow()
-        hideSystemBars()
+
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        super.onLayout(changed, left, top, right, bottom)
+        // v0.1.3: pide al sistema no tratar los bordes como gesto "atrás"
+        // (Android limita la exclusión a ~200 dp por borde).
+        if (Build.VERSION.SDK_INT >= 29) {
+            systemGestureExclusionRects = listOf(android.graphics.Rect(0, 0, width, height))
+        }
     }
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
+        if (debugHints) UnlockComboDetector.listener = null
         attached = false
     }
 
@@ -176,113 +180,172 @@ class FakeOffOverlay(
         }
     }
 
+    private val taps = TapSequenceDetector()
+    private val swipe = SwipeUnlockDetector()
+
+    /**
+     * v0.1.3: el manejo de toques usa la lógica pura de GestureLogic.kt,
+     * registra cada etapa en la bitácora y evalúa también ACTION_CANCEL
+     * (la navegación por gestos del sistema puede robar el toque cerca del
+     * borde inferior y antes el deslizamiento se perdía).
+     */
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        // v0.1.3: coordenadas absolutas (rawX/rawY) contra el tamaño REAL de
+        // la pantalla, por si la ventana no la cubriera completa.
+        val (w, h) = screenSize()
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
                 val idx = event.actionIndex
-                val x = event.getX(idx)
-                val y = event.getY(idx)
-                handleShutdownTap(x, y)
+                val x = if (Build.VERSION.SDK_INT >= 29) event.getRawX(idx) else event.rawX
+                val y = if (Build.VERSION.SDK_INT >= 29) event.getRawY(idx) else event.rawY
+                EventLog.i(
+                    TAG,
+                    "TOQUE raw=(${x.toInt()},${y.toInt()}) local=(${event.getX(idx).toInt()},${event.getY(idx).toInt()}) " +
+                        "vista=${width}x$height pantalla=${w.toInt()}x${h.toInt()} volumen=${UnlockComboDetector.isVolumeHeld()}",
+                )
+                val r = taps.onTap(x, y, w, h, event.eventTime)
+                if (debugHints) {
+                    invalidate()
+                    // Para que el reinicio por tiempo (3 s) también se vea.
+                    postDelayed({ invalidate() }, 3_100L)
+                }
+                when (r) {
+                    is TapSequenceDetector.Result.Progress ->
+                        EventLog.i(TAG, "Apagado real: paso ${r.step}/5 (x=${x.toInt()}, y=${y.toInt()})")
+                    TapSequenceDetector.Result.Completed -> {
+                        EventLog.i(TAG, "Apagado real: secuencia completa")
+                        onShutdownGesture()
+                        return true
+                    }
+                    is TapSequenceDetector.Result.Ignored ->
+                        EventLog.i(TAG, "Toque fuera de secuencia (${r.reason})")
+                }
                 if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-                    beginSwipe(x, y)
+                    swipe.onDown(x, y, w, h, event.eventTime)
                 }
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                if (event.actionMasked == MotionEvent.ACTION_UP) {
-                    endSwipe(event.x, event.y)
-                } else {
-                    swipeTracking = false
-                }
-            }
+            MotionEvent.ACTION_MOVE -> swipe.onMove(event.rawX, event.rawY)
+            MotionEvent.ACTION_UP -> evaluateSwipe(event.rawX, event.rawY, h, event.eventTime, cancelled = false)
+            MotionEvent.ACTION_CANCEL -> evaluateSwipe(null, null, h, event.eventTime, cancelled = true)
         }
-        // Consumimos todos los toques para que nada "de abajo" reciba eventos.
         return true
     }
 
-    private fun beginSwipe(x: Float, y: Float) {
-        swipeStartX = x
-        swipeStartY = y
-        swipeStartTime = SystemClock.uptimeMillis()
-        swipeTracking = true
-        val h = height.coerceAtLeast(1)
-        val w = width.coerceAtLeast(1)
-        swipeStartedInUnlockZone = (y >= h * UNLOCK_START_Y) && (x <= w * UNLOCK_START_X)
-    }
-
-    private fun endSwipe(x: Float, y: Float) {
-        if (!swipeTracking) return
-        swipeTracking = false
-        val h = height.coerceAtLeast(1)
-        val dy = swipeStartY - y // positivo = hacia arriba
-        val dx = x - swipeStartX
-        val dt = SystemClock.uptimeMillis() - swipeStartTime
-        val longEnough = dy >= h * UNLOCK_MIN_DY
-        val mostlyVertical = abs(dy) > abs(dx) * 0.6f
-        val notTooSlow = dt in 80..2_500
-        val volumeHeld = UnlockComboDetector.isVolumeHeld()
-
-        if (swipeStartedInUnlockZone && longEnough && mostlyVertical && notTooSlow) {
-            if (volumeHeld) {
-                EventLog.i(TAG, "Gesto de desbloqueo válido (volumen + swipe)")
-                onUnlockGesture()
+    private fun screenSize(): Pair<Float, Float> {
+        return try {
+            val wm = windowManager ?: service.getSystemService(WindowManager::class.java)
+            if (Build.VERSION.SDK_INT >= 30 && wm != null) {
+                val b = wm.currentWindowMetrics.bounds
+                b.width().toFloat() to b.height().toFloat()
             } else {
-                EventLog.i(TAG, "Swipe de desbloqueo sin volumen: no se desbloquea")
-                onFailedUnlockAttempt()
+                val dm = resources.displayMetrics
+                dm.widthPixels.toFloat() to dm.heightPixels.toFloat()
             }
-        } else if (swipeStartedInUnlockZone && longEnough && !volumeHeld) {
-            onFailedUnlockAttempt()
+        } catch (_: Throwable) {
+            width.toFloat() to height.toFloat()
         }
-        // Otros swipes se ignoran (no penalizan).
     }
 
-    private fun handleShutdownTap(x: Float, y: Float) {
-        val now = SystemClock.uptimeMillis()
-        if (shutdownStep > 0 && now - shutdownLastStepAt > SHUTDOWN_STEP_MAX_GAP_MS) {
-            shutdownStep = 0
-        }
-        val expected = shutdownStep
-        val inZone = isInShutdownZone(expected, x, y)
-        if (inZone) {
-            shutdownStep = expected + 1
-            shutdownLastStepAt = now
-            EventLog.i(TAG, "Apagado real: paso $shutdownStep/5")
-            if (shutdownStep >= 5) {
-                shutdownStep = 0
-                EventLog.i(TAG, "Gesto oculto de apagado real completado")
-                onShutdownGesture()
-            }
-        } else if (isInShutdownZone(0, x, y)) {
-            // Reinicia la secuencia si tocan de nuevo la primera esquina.
-            shutdownStep = 1
-            shutdownLastStepAt = now
-        }
-        // Un toque fuera de la zona esperada no reinicia a 0 de inmediato
-        // (el timeout de 2 s se encarga), salvo que sea el primer paso.
+    // ---------- v0.1.3: "gestos fantasma" ----------
+    private val zoneFill = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        style = android.graphics.Paint.Style.FILL
+    }
+    private val zoneStroke = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        style = android.graphics.Paint.Style.STROKE
+        strokeWidth = 4f
+        color = Color.argb(160, 76, 175, 80)
+    }
+    private val numberPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(220, 255, 255, 255)
+        textAlign = android.graphics.Paint.Align.CENTER
+        typeface = android.graphics.Typeface.DEFAULT_BOLD
+    }
+    private val labelPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(170, 255, 255, 255)
+        textAlign = android.graphics.Paint.Align.CENTER
+    }
+    private val dashed = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        style = android.graphics.Paint.Style.STROKE
+        strokeWidth = 4f
+        color = Color.argb(140, 100, 181, 246)
+        pathEffect = android.graphics.DashPathEffect(floatArrayOf(18f, 14f), 0f)
     }
 
-    private fun isInShutdownZone(step: Int, x: Float, y: Float): Boolean {
-        val w = width.toFloat().coerceAtLeast(1f)
-        val h = height.toFloat().coerceAtLeast(1f)
-        val corner = (w.coerceAtMost(h)) * CORNER_FRACTION
-        val centerR = (w.coerceAtMost(h)) * CENTER_FRACTION
-        return when (step) {
-            0 -> x <= corner && y <= corner
-            1 -> x >= w - corner && y <= corner
-            2 -> x >= w - corner && y >= h - corner
-            3 -> x <= corner && y >= h - corner
-            4 -> hypot((x - w / 2f).toDouble(), (y - h / 2f).toDouble()) <= centerR
-            else -> false
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        hideSystemBars()
+        if (debugHints) UnlockComboDetector.listener = { post { invalidate() } }
+    }
+
+    /**
+     * Dibuja las zonas EXACTAS de la secuencia de 5 toques (misma geometría que
+     * TapSequenceDetector.zoneOf) y la zona de inicio del deslizamiento. Solo si
+     * [debugHints] (ajuste "Mostrar gestos fantasma").
+     */
+    override fun onDraw(canvas: android.graphics.Canvas) {
+        super.onDraw(canvas)
+        if (!debugHints) return
+        val loc = IntArray(2).also { getLocationOnScreen(it) }
+        val (w, h) = screenSize()
+        val d = resources.displayMetrics.density
+        numberPaint.textSize = 44 * d
+        labelPaint.textSize = 15 * d
+        canvas.save()
+        canvas.translate(-loc[0].toFloat(), -loc[1].toFloat()) // pantalla → vista
+
+        // Zona del deslizamiento de desbloqueo.
+        val sx = w * swipe.startMaxXFraction
+        val sy = h * swipe.startMinYFraction
+        canvas.drawRect(6f, sy, sx, h - 6f, dashed)
+        val ax = sx / 2f
+        canvas.drawLine(ax, h * 0.82f, ax, h * 0.58f, dashed)
+        canvas.drawLine(ax, h * 0.58f, ax - 24 * d, h * 0.58f + 24 * d, dashed)
+        canvas.drawLine(ax, h * 0.58f, ax + 24 * d, h * 0.58f + 24 * d, dashed)
+        canvas.drawText("Mantén volumen + desliza", ax, h * 0.55f, labelPaint)
+
+        // Zonas 1–5.
+        for (i in 0 until TapSequenceDetector.TOTAL) {
+            val g = taps.zoneGeometry(i, w, h)
+            val done = i < taps.currentStep(android.os.SystemClock.uptimeMillis())
+            zoneFill.color = if (done) Color.argb(200, 76, 175, 80) else Color.argb(55, 76, 175, 80)
+            val (cx, cy) = if (i < 4) {
+                val r = android.graphics.RectF(g[0], g[1], g[2], g[3])
+                canvas.drawRoundRect(r, 24f, 24f, zoneFill)
+                canvas.drawRoundRect(r, 24f, 24f, zoneStroke)
+                r.centerX() to r.centerY()
+            } else {
+                canvas.drawCircle(g[0], g[1], g[2], zoneFill)
+                canvas.drawCircle(g[0], g[1], g[2], zoneStroke)
+                g[0] to g[1]
+            }
+            val text = if (done) "✓" else "${i + 1}"
+            canvas.drawText(text, cx, cy + numberPaint.textSize / 3, numberPaint)
         }
+
+        // Indicador de volumen detectado.
+        val held = UnlockComboDetector.isVolumeHeld()
+        labelPaint.color = if (held) Color.argb(230, 76, 175, 80) else Color.argb(120, 255, 255, 255)
+        canvas.drawText(if (held) "● Volumen detectado" else "○ Volumen", w / 2f, h * 0.33f, labelPaint)
+        labelPaint.color = Color.argb(170, 255, 255, 255)
+        canvas.restore()
+    }
+
+    private fun evaluateSwipe(x: Float?, y: Float?, h: Float, now: Long, cancelled: Boolean) {
+        val outcome = swipe.onEnd(x, y, h, now)
+        if (outcome == SwipeUnlockDetector.Outcome.NONE) return
+        if (outcome != SwipeUnlockDetector.Outcome.SWIPE_OK) {
+            if (outcome != SwipeUnlockDetector.Outcome.TOO_SHORT) {
+                EventLog.i(TAG, "Deslizamiento descartado: $outcome (cancel=$cancelled)")
+            }
+            return
+        }
+        val volume = UnlockComboDetector.volumeActiveDuring(swipe.startTime, now)
+        EventLog.i(TAG, "Deslizamiento válido (cancel=$cancelled), volumen activo=$volume")
+        if (volume) onUnlockGesture() else onFailedUnlockAttempt()
     }
 
     companion object {
         private const val TAG = "FakeOffOverlay"
         const val OVERLAY_TITLE = "AntirroboFakeOff"
-        private const val UNLOCK_START_Y = 0.72f
-        private const val UNLOCK_START_X = 0.45f
-        private const val UNLOCK_MIN_DY = 0.45f
-        private const val SHUTDOWN_STEP_MAX_GAP_MS = 2_000L
-        private const val CORNER_FRACTION = 0.18f
-        private const val CENTER_FRACTION = 0.16f
     }
 }

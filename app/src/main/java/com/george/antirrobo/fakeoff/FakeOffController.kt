@@ -3,6 +3,7 @@ package com.george.antirrobo.fakeoff
 import android.accessibilityservice.AccessibilityService
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
@@ -35,7 +36,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 object FakeOffController {
 
     private const val TAG = "FakeOff"
-    private const val POWER_DIALOG_GRACE_MS = 8_000L
+    private const val POWER_DIALOG_GRACE_MS = 15_000L
 
     private val main = Handler(Looper.getMainLooper())
     private val active = AtomicBoolean(false)
@@ -67,9 +68,10 @@ object FakeOffController {
 
     fun boundService(): AccessibilityService? = a11yRef?.get()
 
-    fun enter(reason: String) {
+    /** [demo] = lanzado desde "Probar apagado falso" / "Probar menú de apagado". */
+    fun enter(reason: String, demo: Boolean = false) {
         if (Looper.myLooper() != Looper.getMainLooper()) {
-            main.post { enter(reason) }
+            main.post { enter(reason, demo) }
             return
         }
         if (powerDialogThrough.get()) {
@@ -129,6 +131,7 @@ object FakeOffController {
                 EventLog.i(TAG, "Intento de desbloqueo fallido. El auto-desbloqueo sigue corriendo.")
                 AppStatus.setLastEvent("Desbloqueo fallido; espera el auto-desbloqueo")
             },
+            debugHints = prefs.ghostGuides && (demo || prefs.ghostGuidesReal),
         )
         val shown = view.show()
         if (!shown) {
@@ -160,6 +163,14 @@ object FakeOffController {
         }
         val was = active.getAndSet(false)
         val hadOverlay = overlay != null
+        // v0.1.3: también se quitan el menú falso y cualquier animación.
+        safe("quitar menú falso") { decoy?.remove() }
+        decoy = null
+        safe("quitar animación") { anim?.remove() }
+        anim = null
+        sequenceRunning.set(false)
+        main.removeCallbacks(sequenceSafety)
+        main.removeCallbacks(decoyTimeout)
         safe("cancelar watchdog") { watchdog?.cancel() }
         UnlockComboDetector.reset()
         safe("quitar overlay") { overlay?.remove() }
@@ -184,18 +195,175 @@ object FakeOffController {
         exit("emergencia: $reason")
     }
 
+    /**
+     * Gesto oculto: deja pasar el diálogo REAL de apagado y lo abre.
+     *
+     * v0.1.3: antes se llamaba GLOBAL_ACTION_POWER_DIALOG en el mismo instante
+     * en que se quitaba el overlay; ahora se espera 300 ms a que la ventana se
+     * retire, se reintenta si el sistema responde false y la ventana para dejar
+     * pasar el diálogo dura 15 s (antes 8 s).
+     */
     fun requestTrueShutdown() {
-        val service = a11yRef?.get() ?: return
-        EventLog.i(TAG, "Gesto de apagado real: se deja pasar GLOBAL_ACTION_POWER_DIALOG")
+        val service = a11yRef?.get()
+        if (service == null) {
+            EventLog.w(TAG, "Apagado real: no hay servicio de accesibilidad")
+            return
+        }
+        EventLog.i(TAG, "Apagado real: se deja pasar GLOBAL_ACTION_POWER_DIALOG")
         powerDialogThrough.set(true)
         AppStatus.setLetPowerDialogThrough(true)
         exit("gesto de apagado real (se abre el diálogo del sistema)")
-        val ok = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_POWER_DIALOG)
-        AppStatus.setLastEvent("Diálogo real de apagado (gesto oculto), ok=$ok")
+        main.postDelayed({
+            val ok = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_POWER_DIALOG)
+            EventLog.i(TAG, "GLOBAL_ACTION_POWER_DIALOG intento 1 → $ok")
+            AppStatus.setLastEvent("Diálogo real de apagado, ok=$ok")
+            if (!ok) {
+                main.postDelayed({
+                    val ok2 = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_POWER_DIALOG)
+                    EventLog.i(TAG, "GLOBAL_ACTION_POWER_DIALOG intento 2 → $ok2")
+                }, 700L)
+            }
+        }, 300L)
         main.postDelayed({
             powerDialogThrough.set(false)
             AppStatus.setLetPowerDialogThrough(false)
+            EventLog.i(TAG, "Fin de la ventana para dejar pasar el diálogo de apagado")
         }, POWER_DIALOG_GRACE_MS)
+    }
+
+    // ---------- v0.1.3: menú de apagado falso + animaciones ----------
+
+    private var decoy: DecoyPowerMenu? = null
+    private var anim: ShutdownAnimation? = null
+    private val sequenceRunning = AtomicBoolean(false)
+
+    /** Menú falso visible o animación en curso. */
+    val isDecoyBusy: Boolean
+        get() = decoy != null || sequenceRunning.get()
+
+    /** Durante la animación se consumen las teclas de volumen (no hay panel ni vibración). */
+    val isAnimating: Boolean
+        get() = sequenceRunning.get()
+
+    private val decoyTimeout = Runnable {
+        decoy?.dismiss("tiempo máximo del menú falso (60 s)")
+    }
+
+    private val sequenceSafety = Runnable {
+        if (sequenceRunning.get()) {
+            EventLog.w(TAG, "La animación no terminó a tiempo; se entra directo a apagado falso")
+            safe("quitar animación") { anim?.remove() }
+            anim = null
+            sequenceRunning.set(false)
+            enter("respaldo de animación")
+        }
+    }
+
+    /** Lo llama el servicio de accesibilidad al detectar (y cerrar) el menú real. */
+    fun onPowerMenuDetected(reason: String) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            main.post { onPowerMenuDetected(reason) }
+            return
+        }
+        if (powerDialogThrough.get() || active.get() || overlay != null || isDecoyBusy) return
+        val service = a11yRef?.get() ?: return
+        val prefs = AppPreferences.get(service)
+        if (!prefs.armed) return
+        if (prefs.decoyPowerMenu) showDecoy(reason) else enter(reason)
+    }
+
+    fun showDecoy(reason: String, demo: Boolean = false): Boolean {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            main.post { showDecoy(reason, demo) }
+            return true
+        }
+        val service = a11yRef?.get() ?: return false
+        if (!AppPreferences.get(service).armed || isDecoyBusy || active.get()) return false
+        val menu = DecoyPowerMenu(
+            service = service,
+            onPowerOff = { decoy = null; runSequence(ShutdownAnimation.Kind.SHUTDOWN, demo) },
+            onRestart = { decoy = null; runSequence(ShutdownAnimation.Kind.RESTART, demo) },
+            onEmergency = { decoy = null; openEmergencyDialer(service) },
+            onDismiss = {
+                decoy = null
+                main.removeCallbacks(decoyTimeout)
+                AppStatus.setLastEvent("Menú falso cerrado (sigue armado)")
+            },
+        )
+        decoy = menu
+        if (!menu.show()) {
+            decoy = null
+            enter("$reason (menú falso no disponible)", demo)
+            return false
+        }
+        AppStatus.setLastEvent("Menú falso: $reason")
+        main.removeCallbacks(decoyTimeout)
+        main.postDelayed(decoyTimeout, 60_000L)
+        return true
+    }
+
+    fun dismissDecoy(reason: String) {
+        decoy?.dismiss(reason)
+    }
+
+    fun decoyShownAt(): Long = decoy?.shownAt ?: 0L
+
+    private fun runSequence(kind: ShutdownAnimation.Kind, demo: Boolean) {
+        val service = a11yRef?.get() ?: return
+        main.removeCallbacks(decoyTimeout)
+        sequenceRunning.set(true)
+        main.removeCallbacks(sequenceSafety)
+        main.postDelayed(sequenceSafety, 20_000L)
+        UnlockComboDetector.reset()
+        val label = if (kind == ShutdownAnimation.Kind.SHUTDOWN) "apagar" else "reiniciar"
+        val first = ShutdownAnimation(service, kind)
+        anim = first
+        val ok = first.play(holdMs = if (kind == ShutdownAnimation.Kind.SHUTDOWN) 2_200L else 1_800L) {
+            if (kind == ShutdownAnimation.Kind.SHUTDOWN) {
+                finishSequence()
+                enter("menú falso: $label", demo)
+            } else {
+                // Reinicio: negro ~3 s y luego un arranque falso "RED MAGIC".
+                val boot = ShutdownAnimation(service, ShutdownAnimation.Kind.BOOT)
+                anim = boot
+                val ok2 = boot.play(holdMs = 2_500L, startDelayMs = 3_000L) {
+                    finishSequence()
+                    enter("menú falso: $label (tras arranque falso)", demo)
+                }
+                if (!ok2) {
+                    finishSequence()
+                    enter("menú falso: $label", demo)
+                }
+            }
+        }
+        if (!ok) {
+            finishSequence()
+            enter("menú falso: $label (sin animación)", demo)
+        }
+    }
+
+    private fun finishSequence() {
+        sequenceRunning.set(false)
+        main.removeCallbacks(sequenceSafety)
+    }
+
+    /** NUNCA se bloquean las llamadas de emergencia. */
+    private fun openEmergencyDialer(service: AccessibilityService) {
+        exit("botón de emergencia")
+        val candidates = listOf(
+            Intent("com.android.phone.EmergencyDialer.DIAL"),
+            Intent(Intent.ACTION_DIAL, Uri.parse("tel:911")),
+            Intent(Intent.ACTION_DIAL),
+        )
+        for (i in candidates) {
+            try {
+                service.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                EventLog.i(TAG, "Marcador de emergencia abierto: ${i.action}")
+                return
+            } catch (t: Throwable) {
+                EventLog.w(TAG, "No abrió ${i.action}", t)
+            }
+        }
     }
 
     fun checkWatchdogFromService() {

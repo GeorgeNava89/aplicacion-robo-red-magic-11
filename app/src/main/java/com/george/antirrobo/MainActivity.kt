@@ -108,6 +108,10 @@ class MainActivity : ComponentActivity() {
                     onUseLightKey = { viewModel.useLightKey(this, it) },
                     onClearLightKey = { viewModel.clearLightKey(this) },
                     onTestLights = { viewModel.testLights(it) },
+                    onTestPowerMenu = { viewModel.testPowerMenu(this) },
+                    onToggleDecoy = { viewModel.toggleDecoy() },
+                    onToggleGhost = { viewModel.toggleGhost() },
+                    onToggleGhostReal = { viewModel.toggleGhostReal() },
                     onRestartFgs = {
                         AntirroboForegroundService.start(this)
                         viewModel.refresh(this)

@@ -7,7 +7,7 @@ Paquete: `com.george.antirrobo`
 
 > **Esto es un prototipo del dueño del aparato, no un candado absoluto.** Sin root, Android no deja que una app atrape el botón de encendido *antes* que el sistema. El menú de apagado se detecta y se cierra lo más rápido posible, pero puede verse un instante, y alguien podría alcanzar a tocar “Apagar”. El reinicio forzado de hardware (encendido + volumen alrededor de 10 segundos) **no lo bloquea nadie**.
 
-> **Versión 0.1.2.** Ver *Cambios en v0.1.2*, *Cambios en v0.1.1* y *Huella digital en apagado falso* más abajo.
+> **Versión 0.1.3.** Ver *Cambios en v0.1.3*, *Cambios en v0.1.2*, *Cambios en v0.1.1* y *Huella digital en apagado falso* más abajo.
 
 Hay una **red de seguridad**: si el gesto de desbloqueo falla o algo sale mal, el teléfono se desbloquea solo a los **10 segundos** (configurable). El overlay se quita también si el servicio de accesibilidad se interrumpe o se destruye. El teléfono **nunca** queda bloqueado de forma permanente.
 
@@ -32,22 +32,22 @@ Hay una **red de seguridad**: si el gesto de desbloqueo falla o algo sale mal, e
 
 ### Desbloqueo
 
-1. Mantén presionado **volumen arriba o abajo**.
-2. Al mismo tiempo, desliza **hacia arriba** empezando en el tercio inferior **izquierdo** de la pantalla, recorriendo por lo menos ~45 % de la altura.
+1. Mantén presionado **volumen arriba o abajo** (basta con que esté presionado en algún momento del deslizamiento).
+2. Desliza **hacia arriba** empezando en la **mitad inferior izquierda** de la pantalla, al menos ~30 % de la altura. Empieza un poco **arriba del borde inferior**: el borde lo usa la navegación por gestos del sistema.
 
-Si haces el swipe sin el volumen, no se desbloquea. **No se alarga el bloqueo**: el auto-desbloqueo sigue corriendo.
+Si haces el swipe sin el volumen, no se desbloquea, pero el auto-desbloqueo sigue corriendo.
 
-### Apagado real (gesto oculto, varios puntos)
+### Apagado real (gesto oculto, 5 toques)
 
-Con el apagado falso activo, toca en este orden, con menos de 2 segundos entre toques:
+Con el apagado falso activo, toca en este orden, con hasta **3 segundos** entre toques. Cada zona ocupa 25 % del ancho y del alto en su esquina:
 
-1. Esquina superior izquierda  
-2. Esquina superior derecha  
-3. Esquina inferior derecha  
-4. Esquina inferior izquierda  
-5. Centro  
+1. Esquina superior izquierda
+2. Esquina superior derecha
+3. Esquina inferior derecha
+4. Esquina inferior izquierda
+5. Centro
 
-Se quita el overlay y se abre el diálogo de apagado del sistema. Tú confirmas ahí.
+Se quita el overlay y, 0.3 s después, se abre el diálogo de apagado del sistema. Tú confirmas ahí. Activa **“Mostrar gestos fantasma”** para ver las zonas exactas durante las pruebas.
 
 ### Cómo probarlo sin miedo
 
@@ -104,7 +104,7 @@ Si encuentras el nombre exacto de un menú en tu firmware, anótalo; el modo dia
 4. Entra otra vez y haz un swipe **sin** volumen: no debe desbloquear. Espera el auto-desbloqueo.  
 5. Entra otra vez y completa el **gesto de cinco toques**. Debe aparecer el diálogo real de apagado. Cancélalo.  
 6. Con el modo armado, una **pulsación corta** del botón de encendido o el tiempo de espera de pantalla deben **bloquear el teléfono normal**, SIN apagado falso. (Solo si activas “También al apagar la pantalla (SCREEN_OFF)” se comporta como en v0.1.0.)  
-7. Con el modo armado, una **pulsación larga** (menú de apagado) debe mostrar el menú un instante, cerrarlo y entrar a apagado falso. **A los 10 s (o tu valor) la pantalla debe volver sola**, con brillo, sonido y No Molestar restaurados. Si no se cierra el menú, activa **“Registrar ventanas”**, repite y revisa `files/antirrobo_events.log` para ver el paquete y la clase reales de Nubia.  
+7. Con el modo armado, una **pulsación larga** debe cerrar el menú real y mostrar el **menú falso** (o ir directo a negro si apagaste “Menú falso + animación”). Desliza para apagar → animación → apagado falso. **A los 10 s (o tu valor) la pantalla debe volver sola**, con brillo, sonido y No Molestar restaurados. Si no se cierra el menú, activa **“Registrar ventanas”**, repite y revisa `files/antirrobo_events.log` para ver el paquete y la clase reales de Nubia.  
 7b. Dentro del apagado falso, mantén volumen arriba/abajo: **no** debe cambiar el volumen, ni salir el panel, ni sonar, ni vibrar (ver límites de vibración abajo).  
 7c. Huella: dentro del apagado falso pon el dedo en el sensor. Con la opción experimental apagada, lo esperado es que **no pase nada** (si el teléfono estaba desbloqueado, el sistema no está escuchando la huella). Si la pantalla de bloqueo del sistema está activa y desbloqueas con huella, el apagado falso se quita solo (`USER_PRESENT`).  
 8. Si configuraste un webhook HTTPS, muévete un poco y confirma que llega un JSON con lat/lon, y que `files/location_log.txt` tiene líneas nuevas.  
@@ -217,7 +217,10 @@ app/src/main/java/com/george/antirrobo/
   service/AntirroboAccessibilityService.kt
   service/AntirroboForegroundService.kt
   fakeoff/FakeOffController.kt
-  fakeoff/FakeOffOverlay.kt               # Gestos de desbloqueo y apagado real
+  fakeoff/FakeOffOverlay.kt               # Gestos de desbloqueo y apagado real + gestos fantasma
+  fakeoff/DecoyPowerMenu.kt               # Menú de apagado falso
+  fakeoff/ShutdownAnimation.kt            # Animaciones Apagando / Reiniciando / arranque
+  unlock/GestureLogic.kt                  # Lógica pura de gestos (con pruebas unitarias)
   fakeoff/AudioAndLightsSilencer.kt
   unlock/UnlockComboDetector.kt           # Volumen + gesto
   unlock/AutoUnlockWatchdog.kt            # elapsedRealtime + 2 hilos + alarma exacta
@@ -236,6 +239,36 @@ app/src/main/java/com/george/antirrobo/
 ```
 
 ---
+
+## Cambios en v0.1.3
+
+### Gestos (arreglados; no verificado aún en el aparato)
+
+- **Causa más probable:** desde Android 11 una ventana nueva trae `fitInsetsTypes` = barras del sistema. El overlay negro **no cubría la barra de estado ni la de navegación**: los toques de las esquinas superiores caían en la barra de estado (y abrían el panel), y el borde inferior lo usaba la navegación por gestos. Ahora el overlay usa `fitInsetsTypes = 0`, recorte de cámara `ALWAYS`, y las zonas se calculan con coordenadas absolutas (`rawX/rawY`) contra el tamaño real de la pantalla.
+- **Deslizamiento perdido:** si la navegación por gestos “robaba” el toque llegaba `ACTION_CANCEL` y se descartaba. Ahora se evalúa con la última posición conocida.
+- **Volumen demasiado estricto:** antes el volumen tenía que seguir presionado al levantar el dedo (margen de 120 ms). Ahora basta con que haya estado presionado durante el deslizamiento (margen de 800 ms), y tecla y toque usan el mismo reloj.
+- **Apagado real:** el diálogo del sistema se pedía en el mismo instante en que se quitaba el overlay. Ahora espera 300 ms, reintenta si el sistema responde que no, y la ventana para dejarlo pasar dura 15 s.
+- **Zonas más grandes:** esquinas de 25 % de ancho y alto, centro de 25 %, hasta 3 s entre toques. Un toque fuera de lugar ya no borra el avance. Deslizamiento desde la mitad inferior izquierda, 30 % de la altura, hasta 4 s.
+- Cada toque se registra en `antirrobo_events.log` (coordenadas absolutas y locales, tamaño de vista y pantalla, estado del volumen).
+- Pruebas unitarias en `app/src/test/.../GestureLogicTest.kt`.
+
+### Gestos fantasma
+
+Ajuste **“Mostrar gestos fantasma”** (apagado por defecto). En las pruebas (“Probar apagado falso” / “Probar menú de apagado”) dibuja sobre el negro las zonas **exactas** de los 5 toques (números 1–5 en verde translúcido; cada una se marca ✓ al completarse y se reinicia si vence el tiempo), la zona del deslizamiento con una flecha y “Mantén volumen + desliza”, y un indicador “Volumen detectado”. Sub-opción **“También en modo real”** (apagada por defecto).
+
+### Menú de apagado falso + animación
+
+Con el modo armado, al mantener el botón de encendido se cierra el menú real y aparece uno **falso** (ajuste “Menú falso + animación”, activado por defecto; si lo apagas, va directo a negro):
+
+- **Desliza para apagar** → animación “RED MAGIC” + “Apagando…” (~2.5 s) → apagado falso. El auto-desbloqueo empieza **cuando inicia el negro**.
+- **Reiniciar** → “Reiniciando…”, ~3 s en negro, arranque falso “RED MAGIC” → apagado falso.
+- **Emergencia** → quita todo y abre el **marcador de emergencia real** (`com.android.phone.EmergencyDialer.DIAL`; si no existe, el marcador con 911). Nunca se bloquean las llamadas de emergencia.
+- **Tocar fuera o Atrás** lo cierra, como el real; la protección sigue armada. Se cierra solo a los 60 s o si se apaga la pantalla.
+- Botón **“Probar menú de apagado”** en la app.
+
+**Referencia de diseño:** el manual del Red Magic 10 Pro dice “mantén presionado Encendido y toca ‘Deslizar para apagar’”; usuarios del Red Magic 11 Pro describen las opciones “Apagar” y “Reiniciar”, y el menú del panel rápido incluye Emergencia. **No encontré capturas fiables** del menú de Red Magic OS 10, así que el aspecto es una aproximación (fondo oscuro translúcido, píldora “Desliza para apagar”, botones redondos). El logo es texto “RED MAGIC” dibujado por la app, sin imágenes del fabricante.
+
+**Límites:** el menú real puede verse un instante antes que el falso. Las animaciones duran a lo mucho ~9 s y hay un respaldo de 20 s que entra a negro si algo se atora.
 
 ## Cambios en v0.1.2
 

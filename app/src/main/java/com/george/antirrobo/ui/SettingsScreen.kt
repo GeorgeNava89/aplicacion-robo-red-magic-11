@@ -98,6 +98,10 @@ fun SettingsScreen(
     onUseLightKey: (LightsDiagnostics.Diff) -> Unit,
     onClearLightKey: () -> Unit,
     onTestLights: (Boolean) -> Unit,
+    onTestPowerMenu: () -> Unit,
+    onToggleDecoy: () -> Unit,
+    onToggleGhost: () -> Unit,
+    onToggleGhostReal: () -> Unit,
 ) {
     var showInfo by rememberSaveable { mutableStateOf(false) }
 
@@ -123,7 +127,7 @@ fun SettingsScreen(
             }
         }
 
-        StatusCard(ui, onArmChange, onTestFakeOff, onRestartFgs)
+        StatusCard(ui, onArmChange, onTestFakeOff, onTestPowerMenu, onRestartFgs)
         PermissionsCard(
             ui,
             onOpenAccessibility, onRequestLocation, onRequestBackgroundLocation,
@@ -131,7 +135,7 @@ fun SettingsScreen(
             onOpenOverlay, onOpenAppInfo,
         )
         SettingsCard(
-            ui, onTimeoutChange, onTimeoutCommit, onIntervalChange, onIntervalCommit,
+            ui, onToggleDecoy, onToggleGhost, onToggleGhostReal, onTimeoutChange, onTimeoutCommit, onIntervalChange, onIntervalCommit,
             onWebhookChange, onWebhookSave, onToggleScreenOffTrigger, onToggleFingerprintSilent,
         )
         LightsCard(ui, onToggleLightsOnLock, onScanLights, onUseLightKey, onClearLightKey, onTestLights)
@@ -163,6 +167,7 @@ private fun StatusCard(
     ui: SettingsUiState,
     onArmChange: (Boolean) -> Unit,
     onTestFakeOff: () -> Unit,
+    onTestPowerMenu: () -> Unit,
     onRestartFgs: () -> Unit,
 ) {
     val s = ui.status
@@ -209,8 +214,13 @@ private fun StatusCard(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            FilledTonalButton(onClick = onTestFakeOff, modifier = Modifier.fillMaxWidth()) {
-                Text("Probar apagado falso")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilledTonalButton(onClick = onTestFakeOff, modifier = Modifier.weight(1f)) {
+                    Text("Probar apagado falso", maxLines = 1)
+                }
+                FilledTonalButton(onClick = onTestPowerMenu, modifier = Modifier.weight(1f)) {
+                    Text("Probar menú de apagado", maxLines = 1)
+                }
             }
         }
     }
@@ -330,6 +340,9 @@ private fun PermissionRow(label: String, ok: Boolean?, onClick: () -> Unit, opti
 @Composable
 private fun SettingsCard(
     ui: SettingsUiState,
+    onToggleDecoy: () -> Unit,
+    onToggleGhost: () -> Unit,
+    onToggleGhostReal: () -> Unit,
     onTimeoutChange: (Int) -> Unit,
     onTimeoutCommit: (Int) -> Unit,
     onIntervalChange: (Int) -> Unit,
@@ -373,6 +386,13 @@ private fun SettingsCard(
         )
 
         HorizontalDivider()
+        SwitchRow("Menú falso + animación", ui.decoyMenu, onToggleDecoy)
+        SwitchRow("Mostrar gestos fantasma", ui.ghostGuides, onToggleGhost)
+        if (ui.ghostGuides) {
+            Row(Modifier.padding(start = 16.dp)) {
+                SwitchRow("También en modo real", ui.ghostGuidesReal, onToggleGhostReal)
+            }
+        }
         SwitchRow("Activar al bloquear pantalla", ui.screenOffTrigger, onToggleScreenOffTrigger)
         SwitchRow("Huella silenciosa (beta)", ui.fingerprintSilent, onToggleFingerprintSilent)
     }
@@ -484,9 +504,11 @@ private fun HelpCard(
         Text("Ayuda", style = MaterialTheme.typography.titleMedium)
         Collapsible("Gestos") {
             HelpText(
-                "• Desbloquear: mantén VOLUMEN y desliza hacia arriba desde abajo a la izquierda.\n" +
+                "• Desbloquear: mantén VOLUMEN y desliza hacia arriba desde la mitad inferior izquierda " +
+                    "(empieza un poco arriba del borde, no desde el borde).\n" +
                     "• Apagar de verdad: toca las esquinas sup-izq → sup-der → inf-der → inf-izq → centro " +
-                    "(menos de 2 s entre toques).\n" +
+                    "(hasta 3 s entre toques).\n" +
+                    "• \"Mostrar gestos fantasma\" dibuja las zonas exactas (1–5 y el deslizamiento) en las pruebas.\n" +
                     "• Si fallas, espera: vuelve solo en ${ui.timeoutSeconds} s.",
             )
         }
@@ -495,6 +517,15 @@ private fun HelpCard(
                 "• Si desbloqueas desde la pantalla de bloqueo del sistema, el apagado falso se quita solo.\n" +
                     "• \"Huella silenciosa (beta)\" escucha la huella sin ventana propia. No verificado en Red Magic.\n" +
                     "• El círculo del sensor y su vibración los muestra el sistema; sin root no se pueden ocultar.",
+            )
+        }
+        Collapsible("Menú falso") {
+            HelpText(
+                "• Al mantener encendido se cierra el menú real y aparece uno falso.\n" +
+                    "• Deslizar para apagar → animación \"Apagando…\" → apagado falso.\n" +
+                    "• Reiniciar → \"Reiniciando…\", negro y arranque falso → apagado falso.\n" +
+                    "• Emergencia abre el marcador de emergencia real y quita todo.\n" +
+                    "• Tocar fuera o Atrás lo cierra; sigue armado.",
             )
         }
         Collapsible("Cuándo se activa") {

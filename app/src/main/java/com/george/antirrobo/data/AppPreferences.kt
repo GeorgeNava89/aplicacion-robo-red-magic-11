@@ -109,6 +109,20 @@ class AppPreferences private constructor(context: Context) {
     val lightsFeatureActive: Boolean
         get() = rgbOffOnLock && rgbKeyName.isNotBlank()
 
+    /** v0.1.3: true = menú falso + animación (default); false = directo a negro. */
+    var decoyPowerMenu: Boolean
+        get() = prefs.getBoolean("decoy_power_menu", true)
+        set(value) = prefs.edit { putBoolean("decoy_power_menu", value) }
+
+    /** v0.1.3: "Mostrar gestos fantasma" (solo en pruebas) y sub-opción "también en modo real". */
+    var ghostGuides: Boolean
+        get() = prefs.getBoolean("ghost_guides", false)
+        set(value) = prefs.edit { putBoolean("ghost_guides", value) }
+
+    var ghostGuidesReal: Boolean
+        get() = prefs.getBoolean("ghost_guides_real", false)
+        set(value) = prefs.edit { putBoolean("ghost_guides_real", value) }
+
     var snapshotBrightness: Int
         get() = prefs.getInt(KEY_BRIGHTNESS, -1)
         set(value) = prefs.edit { putInt(KEY_BRIGHTNESS, value) }

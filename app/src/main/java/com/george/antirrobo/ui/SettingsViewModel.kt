@@ -38,6 +38,9 @@ data class SettingsUiState(
     val diagnostic: Boolean = false,
     val screenOffTrigger: Boolean = false,
     val fingerprintSilent: Boolean = false,
+    val decoyMenu: Boolean = true,
+    val ghostGuides: Boolean = false,
+    val ghostGuidesReal: Boolean = false,
     val lightsOnLock: Boolean = true,
     val rgbKeyLabel: String = "",
     val scanASummary: String = "",
@@ -89,6 +92,9 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
                 diagnostic = prefs.diagnosticWindows,
                 screenOffTrigger = prefs.screenOffTrigger,
                 fingerprintSilent = prefs.fingerprintSilentAuth,
+                decoyMenu = prefs.decoyPowerMenu,
+                ghostGuides = prefs.ghostGuides,
+                ghostGuidesReal = prefs.ghostGuidesReal,
                 lightsOnLock = prefs.rgbOffOnLock,
                 rgbKeyLabel = rgbLabel(),
                 deviceOwnerText = policy.statusText(),
@@ -171,7 +177,8 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         toast("Entrando a apagado falso de prueba. Auto-desbloqueo en ${prefs.autoUnlockSeconds}s.")
-        FakeOffController.enter("prueba desde ajustes")
+        // v0.1.3: en la prueba se dibujan tenuemente las zonas de los gestos.
+        FakeOffController.enter("prueba desde ajustes", demo = true)
     }
 
     fun toggleDiagnostic() {
@@ -182,6 +189,37 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
             if (next) "Diagnóstico ON: se registran las ventanas en ${EventLog.filePath()}"
             else "Diagnóstico OFF",
         )
+    }
+
+    fun testPowerMenu(context: Context) {
+        if (!prefs.armed) {
+            toast("Arma el modo primero.")
+            return
+        }
+        if (FakeOffController.boundService() == null) {
+            toast("El servicio de accesibilidad aún no está enlazado.")
+            return
+        }
+        if (prefs.decoyPowerMenu) {
+            FakeOffController.showDecoy("prueba desde ajustes", demo = true)
+        } else {
+            FakeOffController.enter("prueba de menú (directo a negro)", demo = true)
+        }
+    }
+
+    fun toggleGhost() {
+        prefs.ghostGuides = !prefs.ghostGuides
+        _ui.update { it.copy(ghostGuides = prefs.ghostGuides) }
+    }
+
+    fun toggleGhostReal() {
+        prefs.ghostGuidesReal = !prefs.ghostGuidesReal
+        _ui.update { it.copy(ghostGuidesReal = prefs.ghostGuidesReal) }
+    }
+
+    fun toggleDecoy() {
+        prefs.decoyPowerMenu = !prefs.decoyPowerMenu
+        _ui.update { it.copy(decoyMenu = prefs.decoyPowerMenu) }
     }
 
     fun toggleScreenOffTrigger() {
