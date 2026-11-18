@@ -31,6 +31,13 @@ class LockLightsController(private val context: Context) {
 
     fun onBroadcast(action: String) {
         if (!prefs.lightsFeatureActive) return
+        // v0.1.4: con "Bloqueo con luces" la app NUNCA apaga las luces; si las
+        // había apagado, las regresa.
+        if (prefs.lockModeActive) {
+            main.removeCallbacksAndMessages(null)
+            restore("bloqueo con luces activo")
+            return
+        }
         when (action) {
             Intent.ACTION_SCREEN_OFF -> {
                 main.removeCallbacksAndMessages(null)

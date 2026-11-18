@@ -289,6 +289,8 @@ object FakeOffController {
                 main.removeCallbacks(decoyTimeout)
                 AppStatus.setLastEvent("Menú falso cerrado (sigue armado)")
             },
+            style = if (AppPreferences.get(service).decoyStyle == "classic")
+                DecoyPowerMenu.Style.CLASSIC else DecoyPowerMenu.Style.SYSTEM,
         )
         decoy = menu
         if (!menu.show()) {
@@ -318,7 +320,14 @@ object FakeOffController {
         val label = if (kind == ShutdownAnimation.Kind.SHUTDOWN) "apagar" else "reiniciar"
         val first = ShutdownAnimation(service, kind)
         anim = first
-        val ok = first.play(holdMs = if (kind == ShutdownAnimation.Kind.SHUTDOWN) 2_200L else 1_800L) {
+        // v0.1.4: "Apagando…" dura el doble (2.8 s → 5.6 s). El auto-desbloqueo
+        // arranca en enter(), es decir, cuando YA empieza el negro.
+        val shutdown = kind == ShutdownAnimation.Kind.SHUTDOWN
+        val ok = first.play(
+            holdMs = if (shutdown) ShutdownAnimation.SHUTDOWN_HOLD_MS else 1_800L,
+            fadeInMs = if (shutdown) ShutdownAnimation.SHUTDOWN_FADE_IN_MS else 400L,
+            fadeOutMs = if (shutdown) ShutdownAnimation.SHUTDOWN_FADE_OUT_MS else 600L,
+        ) {
             if (kind == ShutdownAnimation.Kind.SHUTDOWN) {
                 finishSequence()
                 enter("menú falso: $label", demo)

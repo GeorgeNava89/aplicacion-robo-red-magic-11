@@ -109,6 +109,17 @@
             </intent-filter>
         </receiver>
 
+        <!-- v0.1.4: huella para salir de "Bloqueo con luces" -->
+        <activity
+            android:name=".lockmode.LockAuthActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:taskAffinity=""
+            android:launchMode="singleInstance"
+            android:theme="@style/Theme.Antirrobo.Black" />
+
         <activity
             android:name=".unlock.FingerprintUnlockActivity"
             android:exported="false"

@@ -112,6 +112,7 @@ class MainActivity : ComponentActivity() {
                     onToggleDecoy = { viewModel.toggleDecoy() },
                     onToggleGhost = { viewModel.toggleGhost() },
                     onToggleGhostReal = { viewModel.toggleGhostReal() },
+                    onAction = { viewModel.onAction(this, it) },
                     onRestartFgs = {
                         AntirroboForegroundService.start(this)
                         viewModel.refresh(this)

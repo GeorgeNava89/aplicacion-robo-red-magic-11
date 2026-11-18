@@ -102,6 +102,7 @@ fun SettingsScreen(
     onToggleDecoy: () -> Unit,
     onToggleGhost: () -> Unit,
     onToggleGhostReal: () -> Unit,
+    onAction: (String) -> Unit,
 ) {
     var showInfo by rememberSaveable { mutableStateOf(false) }
 
@@ -135,7 +136,7 @@ fun SettingsScreen(
             onOpenOverlay, onOpenAppInfo,
         )
         SettingsCard(
-            ui, onToggleDecoy, onToggleGhost, onToggleGhostReal, onTimeoutChange, onTimeoutCommit, onIntervalChange, onIntervalCommit,
+            ui, onToggleDecoy, onToggleGhost, onToggleGhostReal, onAction, onTimeoutChange, onTimeoutCommit, onIntervalChange, onIntervalCommit,
             onWebhookChange, onWebhookSave, onToggleScreenOffTrigger, onToggleFingerprintSilent,
         )
         LightsCard(ui, onToggleLightsOnLock, onScanLights, onUseLightKey, onClearLightKey, onTestLights)
@@ -343,6 +344,7 @@ private fun SettingsCard(
     onToggleDecoy: () -> Unit,
     onToggleGhost: () -> Unit,
     onToggleGhostReal: () -> Unit,
+    onAction: (String) -> Unit,
     onTimeoutChange: (Int) -> Unit,
     onTimeoutCommit: (Int) -> Unit,
     onIntervalChange: (Int) -> Unit,
@@ -387,6 +389,12 @@ private fun SettingsCard(
 
         HorizontalDivider()
         SwitchRow("Menú falso + animación", ui.decoyMenu, onToggleDecoy)
+        if (ui.decoyMenu) {
+            Column(Modifier.padding(start = 16.dp)) {
+                ChoiceRow("Igual al sistema (Red Magic)", ui.decoyStyle != "classic") { onAction("style_system") }
+                ChoiceRow("Clásico (v0.1.3)", ui.decoyStyle == "classic") { onAction("style_classic") }
+            }
+        }
         SwitchRow("Mostrar gestos fantasma", ui.ghostGuides, onToggleGhost)
         if (ui.ghostGuides) {
             Row(Modifier.padding(start = 16.dp)) {
@@ -395,6 +403,31 @@ private fun SettingsCard(
         }
         SwitchRow("Activar al bloquear pantalla", ui.screenOffTrigger, onToggleScreenOffTrigger)
         SwitchRow("Huella silenciosa (beta)", ui.fingerprintSilent, onToggleFingerprintSilent)
+
+        HorizontalDivider()
+        Text("Bloqueo con luces", style = MaterialTheme.typography.titleSmall)
+        Text(
+            "Tapa la pantalla sin bloquear el sistema, así las luces RGB siguen encendidas. " +
+                "Para salir: 5 toques (esquinas + centro) y luego huella.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        SwitchRow("Permitir PIN como respaldo", ui.lockPin) { onAction("lock_pin") }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilledTonalButton(onClick = { onAction("lock_now") }) { Text("Bloquear ahora", maxLines = 1) }
+            OutlinedButton(onClick = { onAction("lock_test") }) { Text("Probar (30 s)", maxLines = 1) }
+        }
+    }
+}
+
+@Composable
+private fun ChoiceRow(label: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+    ) {
+        androidx.compose.material3.RadioButton(selected = selected, onClick = onClick)
+        Text(label)
     }
 }
 
@@ -522,9 +555,10 @@ private fun HelpCard(
         Collapsible("Menú falso") {
             HelpText(
                 "• Al mantener encendido se cierra el menú real y aparece uno falso.\n" +
-                    "• Deslizar para apagar → animación \"Apagando…\" → apagado falso.\n" +
-                    "• Reiniciar → \"Reiniciando…\", negro y arranque falso → apagado falso.\n" +
-                    "• Emergencia abre el marcador de emergencia real y quita todo.\n" +
+                    "• \"Igual al sistema\": botones Apagar y Reiniciar como el Red Magic real (un toque).\n" +
+                    "• Apagar → \"Apagando…\" (5.6 s) → apagado falso. Reiniciar → \"Reiniciando…\", negro y arranque falso.\n" +
+                    "• Ese estilo no tiene Emergencia, igual que el real: en ≤10 s se desbloquea solo y la " +
+                    "pantalla de bloqueo del sistema tiene su botón de emergencia. El estilo clásico sí lo trae.\n" +
                     "• Tocar fuera o Atrás lo cierra; sigue armado.",
             )
         }

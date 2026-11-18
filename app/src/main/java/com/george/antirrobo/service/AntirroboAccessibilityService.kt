@@ -11,6 +11,7 @@ import android.view.accessibility.AccessibilityWindowInfo
 import com.george.antirrobo.data.AppPreferences
 import com.george.antirrobo.data.AppStatus
 import com.george.antirrobo.fakeoff.FakeOffController
+import com.george.antirrobo.lockmode.LockModeController
 import com.george.antirrobo.receiver.ScreenStateReceiver
 import com.george.antirrobo.unlock.UnlockComboDetector
 import com.george.antirrobo.util.EventLog
@@ -45,6 +46,7 @@ class AntirroboAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         EventLog.init(this)
         FakeOffController.bind(this)
+        LockModeController.bind(this) // v0.1.4: re-bloquea si "Bloqueo con luces" estaba activo
         AppStatus.setAccessibilityRunning(true)
         AppStatus.setLastEvent("Servicio de accesibilidad conectado")
         EventLog.i(TAG, "AccessibilityService conectado")
@@ -62,6 +64,19 @@ class AntirroboAccessibilityService : AccessibilityService() {
         val prefs = AppPreferences.get(this)
         if (prefs.diagnosticWindows && event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             EventLog.i(TAG, "DIAG ventana: ${describe(event)}")
+        }
+        // v0.1.4: con "Bloqueo con luces" (sin modo armado) el menú de apagado
+        // real solo se cierra; no hay menú falso ni apagado falso.
+        if (!prefs.armed && LockModeController.isCovering && !FakeOffController.letPowerDialogThrough &&
+            (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) &&
+            (looksLikePowerMenu(event) || anyWindowLooksLikePowerMenu())
+        ) {
+            EventLog.i(TAG, "Bloqueo con luces: menú de apagado cerrado")
+            lastOwnBackAt = SystemClock.uptimeMillis()
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            if (Build.VERSION.SDK_INT >= 31) performGlobalAction(GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)
+            return
         }
         if (!prefs.armed) return
         if (FakeOffController.letPowerDialogThrough) return
@@ -86,12 +101,16 @@ class AntirroboAccessibilityService : AccessibilityService() {
                 // no cambia el volumen, no aparece el panel y no hay "tic" háptico
                 // del paso de volumen. En v0.1.0 isActive quedaba en false por el
                 // bug del overlay, así que el sistema procesaba la tecla y vibraba.
-                return FakeOffController.isActive || FakeOffController.isAnimating
+                return FakeOffController.isActive || FakeOffController.isAnimating ||
+                    LockModeController.isCovering
             }
             KeyEvent.KEYCODE_BACK -> {
                 // v0.1.3: "Atrás" cierra el menú falso como el real. Se ignoran
                 // los BACK que nosotros mismos mandamos al cerrar el menú real.
                 if (FakeOffController.isAnimating) return true
+                if (LockModeController.isCovering && !FakeOffController.isActive &&
+                    FakeOffController.decoyShownAt() <= 0L
+                ) return true // v0.1.4: Atrás no hace nada en el bloqueo
                 val now = SystemClock.uptimeMillis()
                 val shownAt = FakeOffController.decoyShownAt()
                 if (shownAt > 0L && now - lastOwnBackAt > 800L && now - shownAt > 500L) {
@@ -136,6 +155,7 @@ class AntirroboAccessibilityService : AccessibilityService() {
     }
 
     private fun cleanup(reason: String) {
+        LockModeController.unbind()
         pendingDismiss?.let { main.removeCallbacks(it) }
         pendingDismiss = null
         try {

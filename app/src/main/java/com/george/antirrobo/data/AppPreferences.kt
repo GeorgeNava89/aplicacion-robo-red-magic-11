@@ -115,6 +115,21 @@ class AppPreferences private constructor(context: Context) {
         set(value) = prefs.edit { putBoolean("decoy_power_menu", value) }
 
     /** v0.1.3: "Mostrar gestos fantasma" (solo en pruebas) y sub-opción "también en modo real". */
+    /** v0.1.4: estilo del menú falso: "system" (igual al Red Magic, por defecto) o "classic" (v0.1.3). */
+    var decoyStyle: String
+        get() = prefs.getString("decoy_style", "system") ?: "system"
+        set(value) = prefs.edit { putString("decoy_style", value) }
+
+    /** v0.1.4: "Bloqueo con luces" activo (sobrevive reinicios del servicio). */
+    var lockModeActive: Boolean
+        get() = prefs.getBoolean("lock_mode_active", false)
+        set(value) = prefs.edit { putBoolean("lock_mode_active", value) }
+
+    /** v0.1.4: permitir el PIN/patrón del sistema como respaldo de la huella. */
+    var lockModeAllowPin: Boolean
+        get() = prefs.getBoolean("lock_mode_allow_pin", true)
+        set(value) = prefs.edit { putBoolean("lock_mode_allow_pin", value) }
+
     var ghostGuides: Boolean
         get() = prefs.getBoolean("ghost_guides", false)
         set(value) = prefs.edit { putBoolean("ghost_guides", value) }

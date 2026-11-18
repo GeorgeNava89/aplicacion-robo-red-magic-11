@@ -7,7 +7,7 @@ Paquete: `com.george.antirrobo`
 
 > **Esto es un prototipo del dueño del aparato, no un candado absoluto.** Sin root, Android no deja que una app atrape el botón de encendido *antes* que el sistema. El menú de apagado se detecta y se cierra lo más rápido posible, pero puede verse un instante, y alguien podría alcanzar a tocar “Apagar”. El reinicio forzado de hardware (encendido + volumen alrededor de 10 segundos) **no lo bloquea nadie**.
 
-> **Versión 0.1.3.** Ver *Cambios en v0.1.3*, *Cambios en v0.1.2*, *Cambios en v0.1.1* y *Huella digital en apagado falso* más abajo.
+> **Versión 0.1.4.** Ver *Cambios en v0.1.4*, *Cambios en v0.1.3*, *Cambios en v0.1.2*, *Cambios en v0.1.1* y *Huella digital en apagado falso* más abajo.
 
 Hay una **red de seguridad**: si el gesto de desbloqueo falla o algo sale mal, el teléfono se desbloquea solo a los **10 segundos** (configurable). El overlay se quita también si el servicio de accesibilidad se interrumpe o se destruye. El teléfono **nunca** queda bloqueado de forma permanente.
 
@@ -239,6 +239,45 @@ app/src/main/java/com/george/antirrobo/
 ```
 
 ---
+
+## Cambios en v0.1.4
+
+### Menú falso “Igual al sistema (Red Magic)” (nuevo estilo por defecto)
+Copia el menú real del Red Magic 11 Pro, tomado de una captura del dueño:
+- Fondo de la pantalla actual muy desenfocado.
+- Dos botones circulares (~74 dp, blanco translúcido) a 33 % y 67 % del ancho y ~45 % del alto: **Apagar** (ícono de encendido) y **Reiniciar** (ícono de 8 rayitas).
+- Abajo, en gris: “Mantenga presionado el botón de encendido por 10 segundos para reiniciar el teléfono.”
+- Un toque en **Apagar** → animación → apagado falso. **Reiniciar** → “Reiniciando…”, negro, arranque falso → apagado falso. Tocar fuera o Atrás lo cierra.
+- El estilo de v0.1.3 sigue disponible como **“Clásico (v0.1.3)”**.
+- **Emergencia:** este estilo no tiene botón de emergencia (el real tampoco). Las llamadas de emergencia siguen siendo posibles: el apagado falso se quita solo en ≤10 s (auto-desbloqueo) y la pantalla de bloqueo del sistema tiene su botón de **Emergencia**. El estilo clásico conserva su botón.
+
+### Desenfoque mucho más fuerte
+- Android 12+ con desenfoque entre ventanas activo: `FLAG_BLUR_BEHIND` con radio de 250 px más un velo oscuro de ~60 %.
+- Sin desenfoque (no compatible o apagado por ahorro de batería): velo de ~85 %. Si el sistema activa o desactiva el desenfoque, el velo se ajusta solo.
+- `backgroundBlurRadius` solo existe para ventanas de actividad, no para overlays agregados con `WindowManager`, así que no aplica aquí.
+
+### Animación de apagado
+- **Logo real:** “Redmagic official logo.png” de Wikimedia Commons (CC BY-SA 4.0, autor Albert12mfjfr). Se le quitó el fondo y las letras se pusieron en blanco (`res/drawable-nodpi/redmagic_logo.png`), escalado al 60 % del ancho. Si no carga, se dibuja el texto “RED MAGIC” medido para caber.
+- **Texto cortado (“R”, “Apagando…” cortado en la “g”):** antes eran TextViews en cursiva condensada con espaciado entre letras, dentro de una columna `WRAP_CONTENT`. No lo pude reproducir sin el teléfono. Se reescribió para dibujar todo en un Canvas: el texto se **mide** con `Paint.measureText` y se reduce si no cabe (`TextFit`, con prueba unitaria). En una simulación a 1216 × 2688 px, “Apagando…” ocupa ~340 px y “Reiniciando…” ~380 px, de 1094 disponibles.
+- **Duración de “Apagando…” al doble:** antes 2.8 s (entrada 0.4 + visible 2.2 + salida 0.6). Ahora **5.6 s** (entrada 0.8, visible 4.4, salida 1.2). El auto-desbloqueo de 10 s empieza cuando inicia el negro.
+
+### Bloqueo con luces (nuevo)
+Ajustes → **“Bloquear ahora”** o **“Probar (30 s)”**.
+- Una ventana de accesibilidad negra cubre toda la pantalla, que sigue **encendida** (se atenúa a los 15 s; un toque la vuelve a encender). Como el sistema **no** entra a su bloqueo, las luces RGB no se apagan por eso.
+- **Única salida:** la secuencia de 5 toques (las mismas zonas que el apagado real) y después la **huella**, con un BiometricPrompt visible. Si “Permitir PIN como respaldo” está activado (por defecto), también sirve el PIN o patrón del teléfono. Si falla o se cancela, se vuelve a bloquear al instante.
+- Si el teléfono no tiene huella ni PIN, el gesto solo desbloquea, para no dejarte afuera.
+- Consume volumen y Atrás. Con el modo armado apagado, el menú de apagado real solo se cierra.
+- Botón **Emergencia** abajo: abre el marcador de emergencia y vuelve a bloquear a los 90 s (espera si hay llamada en curso).
+- Sobrevive reinicios: al reconectarse el servicio de accesibilidad, vuelve a bloquear.
+- Funciona con “Mostrar gestos fantasma”.
+- **Límites:**
+  - No se puede reemplazar el bloqueo del sistema sin root.
+  - Una pulsación corta del botón de encendido apaga la pantalla. Ahí entra el bloqueo del sistema y su manejo de luces; al encender, nuestra ventana sigue encima.
+  - La navegación por gestos puede abrir Inicio debajo, pero nuestra ventana se queda encima.
+  - Mientras aparece la huella, nuestra ventana se quita y queda una actividad negra.
+  - El reinicio forzado (encendido + volumen ~10 s) no se puede bloquear.
+  - La pantalla encendida gasta batería.
+- **¿Quién apaga las luces al bloquear?** Nuestra app solo toca las luces si activaste “Apagar luces RGB al bloquear” **y** guardaste una clave con el Diagnóstico de luces. Sin clave, nunca escribe nada, así que el apagado en el bloqueo normal es del sistema Nubia (no verificado en el aparato). Con el bloqueo con luces activo, la app nunca apaga las luces, y si las había apagado, las regresa. Forzarlas encendidas durante el bloqueo del sistema con esa clave (con `WRITE_SECURE_SETTINGS`) no está verificado.
 
 ## Cambios en v0.1.3
 

@@ -40,6 +40,9 @@ data class SettingsUiState(
     val fingerprintSilent: Boolean = false,
     val decoyMenu: Boolean = true,
     val ghostGuides: Boolean = false,
+    val decoyStyle: String = "system",
+    val lockPin: Boolean = true,
+    val lockActive: Boolean = false,
     val ghostGuidesReal: Boolean = false,
     val lightsOnLock: Boolean = true,
     val rgbKeyLabel: String = "",
@@ -94,6 +97,9 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
                 fingerprintSilent = prefs.fingerprintSilentAuth,
                 decoyMenu = prefs.decoyPowerMenu,
                 ghostGuides = prefs.ghostGuides,
+                decoyStyle = prefs.decoyStyle,
+                lockPin = prefs.lockModeAllowPin,
+                lockActive = prefs.lockModeActive,
                 ghostGuidesReal = prefs.ghostGuidesReal,
                 lightsOnLock = prefs.rgbOffOnLock,
                 rgbKeyLabel = rgbLabel(),
@@ -204,6 +210,24 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
             FakeOffController.showDecoy("prueba desde ajustes", demo = true)
         } else {
             FakeOffController.enter("prueba de menú (directo a negro)", demo = true)
+        }
+    }
+
+    /** v0.1.4: estilo del menú falso y "Bloqueo con luces". */
+    fun onAction(context: Context, action: String) {
+        when (action) {
+            "style_system" -> prefs.decoyStyle = "system"
+            "style_classic" -> prefs.decoyStyle = "classic"
+            "lock_pin" -> prefs.lockModeAllowPin = !prefs.lockModeAllowPin
+            "lock_now" -> com.george.antirrobo.lockmode.LockModeController.activate(context, demo = false)
+            "lock_test" -> com.george.antirrobo.lockmode.LockModeController.activate(context, demo = true)
+        }
+        _ui.update {
+            it.copy(
+                decoyStyle = prefs.decoyStyle,
+                lockPin = prefs.lockModeAllowPin,
+                lockActive = prefs.lockModeActive,
+            )
         }
     }
 
