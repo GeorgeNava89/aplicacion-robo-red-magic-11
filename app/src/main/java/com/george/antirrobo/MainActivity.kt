@@ -99,6 +99,8 @@ class MainActivity : ComponentActivity() {
                     onOpenAppInfo = { openAppInfo() },
                     onTestFakeOff = { viewModel.testFakeOff(this) },
                     onToggleDiagnostic = { viewModel.toggleDiagnostic() },
+                    onToggleScreenOffTrigger = { viewModel.toggleScreenOffTrigger() },
+                    onToggleFingerprintSilent = { viewModel.toggleFingerprintSilent() },
                     onApplyDeviceOwner = { viewModel.applyDeviceOwner() },
                     onClearDeviceOwner = { viewModel.clearDeviceOwner() },
                     onRestartFgs = {

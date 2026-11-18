@@ -27,7 +27,10 @@ class AudioAndLightsSilencer(private val context: Context) {
     private val nubia = NubiaHardwareController(context)
 
     fun silence() {
-        snapshot()
+        // v0.1.1: si ya estábamos silenciados (re-entrada), NO se vuelve a tomar
+        // la foto del estado: se sobrescribiría con "todo en silencio" y al
+        // restaurar el teléfono quedaría mudo.
+        if (!prefs.needsRestore) snapshot()
         prefs.needsRestore = true
         try {
             if (notifications?.isNotificationPolicyAccessGranted == true) {
@@ -56,6 +59,11 @@ class AudioAndLightsSilencer(private val context: Context) {
             }
         }
         cancelVibration()
+        // v0.1.1: apaga hápticos de toque y sonidos de toque del sistema
+        // (requiere "Modificar ajustes del sistema"). NO cubre la vibración
+        // del sensor de huella ni la háptica que el OEM dispare a nivel HAL.
+        trySetSystemInt(Settings.System.HAPTIC_FEEDBACK_ENABLED, 0)
+        trySetSystemInt(Settings.System.SOUND_EFFECTS_ENABLED, 0)
         trySetSystemBrightness(0)
         // NO VERIFICADO en Red Magic 11 Pro: luces RGB y ventilador.
         nubia.tryTurnOffRgbAndFan()
@@ -92,6 +100,8 @@ class AudioAndLightsSilencer(private val context: Context) {
                 }
             }
         }
+        if (prefs.snapshotHaptic >= 0) trySetSystemInt(Settings.System.HAPTIC_FEEDBACK_ENABLED, prefs.snapshotHaptic)
+        if (prefs.snapshotSoundEffects >= 0) trySetSystemInt(Settings.System.SOUND_EFFECTS_ENABLED, prefs.snapshotSoundEffects)
         val brightness = prefs.snapshotBrightness
         val mode = prefs.snapshotBrightnessMode
         if (mode >= 0) trySetBrightnessMode(mode)
@@ -132,6 +142,16 @@ class AudioAndLightsSilencer(private val context: Context) {
             prefs.snapshotBrightness = Settings.System.getInt(
                 context.contentResolver,
                 Settings.System.SCREEN_BRIGHTNESS,
+                -1,
+            )
+            prefs.snapshotHaptic = Settings.System.getInt(
+                context.contentResolver,
+                Settings.System.HAPTIC_FEEDBACK_ENABLED,
+                -1,
+            )
+            prefs.snapshotSoundEffects = Settings.System.getInt(
+                context.contentResolver,
+                Settings.System.SOUND_EFFECTS_ENABLED,
                 -1,
             )
             prefs.snapshotBrightnessMode = Settings.System.getInt(
@@ -179,6 +199,18 @@ class AudioAndLightsSilencer(private val context: Context) {
             )
         } catch (t: Throwable) {
             EventLog.w(TAG, "No se pudo escribir el brillo del sistema", t)
+        }
+    }
+
+    private fun trySetSystemInt(key: String, value: Int) {
+        if (!Settings.System.canWrite(context)) {
+            EventLog.i(TAG, "Sin WRITE_SETTINGS: no se cambia $key")
+            return
+        }
+        try {
+            Settings.System.putInt(context.contentResolver, key, value)
+        } catch (t: Throwable) {
+            EventLog.w(TAG, "No se pudo escribir $key", t)
         }
     }
 

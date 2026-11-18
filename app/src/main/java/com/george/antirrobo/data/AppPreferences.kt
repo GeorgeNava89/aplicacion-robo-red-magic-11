@@ -55,6 +55,27 @@ class AppPreferences private constructor(context: Context) {
         get() = prefs.getInt(KEY_DND, -1)
         set(value) = prefs.edit { putInt(KEY_DND, value) }
 
+    var snapshotHaptic: Int
+        get() = prefs.getInt(KEY_HAPTIC, -1)
+        set(value) = prefs.edit { putInt(KEY_HAPTIC, value) }
+
+    var snapshotSoundEffects: Int
+        get() = prefs.getInt(KEY_SOUND_FX, -1)
+        set(value) = prefs.edit { putInt(KEY_SOUND_FX, value) }
+
+    /**
+     * v0.1.1: SCREEN_OFF (bloqueo normal / tiempo de pantalla) ya NO entra a
+     * apagado falso. Queda como opción, apagada por defecto.
+     */
+    var screenOffTrigger: Boolean
+        get() = prefs.getBoolean(KEY_SCREEN_OFF_TRIGGER, false)
+        set(value) = prefs.edit { putBoolean(KEY_SCREEN_OFF_TRIGGER, value) }
+
+    /** v0.1.1: huella silenciosa EXPERIMENTAL (FingerprintManager sin UI propia). Apagada por defecto. */
+    var fingerprintSilentAuth: Boolean
+        get() = prefs.getBoolean(KEY_FP_SILENT, false)
+        set(value) = prefs.edit { putBoolean(KEY_FP_SILENT, value) }
+
     var snapshotBrightness: Int
         get() = prefs.getInt(KEY_BRIGHTNESS, -1)
         set(value) = prefs.edit { putInt(KEY_BRIGHTNESS, value) }
@@ -98,6 +119,10 @@ class AppPreferences private constructor(context: Context) {
         private const val KEY_NEEDS_RESTORE = "needs_restore"
         private const val KEY_RINGER = "snap_ringer"
         private const val KEY_DND = "snap_dnd"
+        private const val KEY_HAPTIC = "snap_haptic"
+        private const val KEY_SOUND_FX = "snap_sound_fx"
+        private const val KEY_SCREEN_OFF_TRIGGER = "screen_off_trigger"
+        private const val KEY_FP_SILENT = "fingerprint_silent_auth"
         private const val KEY_BRIGHTNESS = "snap_brightness"
         private const val KEY_BRIGHTNESS_MODE = "snap_brightness_mode"
 

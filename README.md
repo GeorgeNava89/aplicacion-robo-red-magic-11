@@ -7,6 +7,8 @@ Paquete: `com.george.antirrobo`
 
 > **Esto es un prototipo del dueño del aparato, no un candado absoluto.** Sin root, Android no deja que una app atrape el botón de encendido *antes* que el sistema. El menú de apagado se detecta y se cierra lo más rápido posible, pero puede verse un instante, y alguien podría alcanzar a tocar “Apagar”. El reinicio forzado de hardware (encendido + volumen alrededor de 10 segundos) **no lo bloquea nadie**.
 
+> **Versión 0.1.1.** Ver la sección *Cambios en v0.1.1* y *Huella digital en apagado falso* más abajo.
+
 Hay una **red de seguridad**: si el gesto de desbloqueo falla o algo sale mal, el teléfono se desbloquea solo a los **10 segundos** (configurable). El overlay se quita también si el servicio de accesibilidad se interrumpe o se destruye. El teléfono **nunca** queda bloqueado de forma permanente.
 
 ---
@@ -15,7 +17,7 @@ Hay una **red de seguridad**: si el gesto de desbloqueo falla o algo sale mal, e
 
 - Servicio en primer plano (`location` + `specialUse`) para que Android no mate el proceso, más un `AccessibilityService`.
 - Con el modo **armado**:
-  - Si aparece el menú de apagado (systemui / clases tipo `GlobalActionsDialog`, y también el broadcast `SCREEN_OFF`), se cierra con `GLOBAL_ACTION_BACK` y `GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE`, y entra el **apagado falso**.
+  - Si aparece el menú de apagado (systemui / clases tipo `GlobalActionsDialog`; desde v0.1.1 el bloqueo normal de pantalla / `SCREEN_OFF` **ya no** lo dispara, salvo que actives la opción), se cierra con `GLOBAL_ACTION_BACK` y `GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE`, y entra el **apagado falso**.
   - Overlay negro a pantalla completa (`TYPE_ACCESSIBILITY_OVERLAY`, sin root), brillo al mínimo, audio en silencio (mejor si concediste No Molestar), vibración cancelada.
   - Intento **no verificado** de apagar las luces RGB laterales y el ventilador trasero de Nubia (no hay API pública; ver más abajo).
   - Se registra la ubicación de forma periódica en un archivo local y, si configuraste una URL, se hace POST al webhook.
@@ -101,8 +103,10 @@ Si encuentras el nombre exacto de un menú en tu firmware, anótalo; el modo dia
 3. Entra otra vez a la prueba. Usa el **gesto de desbloqueo** (volumen + swipe). Debe salir de inmediato y cancelar el timer.  
 4. Entra otra vez y haz un swipe **sin** volumen: no debe desbloquear. Espera el auto-desbloqueo.  
 5. Entra otra vez y completa el **gesto de cinco toques**. Debe aparecer el diálogo real de apagado. Cancélalo.  
-6. Con el modo armado, una pulsación corta del botón de encendido (apaga la pantalla) debe entrar a apagado falso (`SCREEN_OFF`).  
-7. Con el modo armado, una pulsación larga debe mostrar el menú de apagado un instante y cerrarse. Si no se cierra, activa **“Registrar ventanas”**, repite, y revisa `files/antirrobo_events.log` (la ruta aparece en Ajustes) para ver el paquete y la clase reales de Nubia.  
+6. Con el modo armado, una **pulsación corta** del botón de encendido o el tiempo de espera de pantalla deben **bloquear el teléfono normal**, SIN apagado falso. (Solo si activas “También al apagar la pantalla (SCREEN_OFF)” se comporta como en v0.1.0.)  
+7. Con el modo armado, una **pulsación larga** (menú de apagado) debe mostrar el menú un instante, cerrarlo y entrar a apagado falso. **A los 10 s (o tu valor) la pantalla debe volver sola**, con brillo, sonido y No Molestar restaurados. Si no se cierra el menú, activa **“Registrar ventanas”**, repite y revisa `files/antirrobo_events.log` para ver el paquete y la clase reales de Nubia.  
+7b. Dentro del apagado falso, mantén volumen arriba/abajo: **no** debe cambiar el volumen, ni salir el panel, ni sonar, ni vibrar (ver límites de vibración abajo).  
+7c. Huella: dentro del apagado falso pon el dedo en el sensor. Con la opción experimental apagada, lo esperado es que **no pase nada** (si el teléfono estaba desbloqueado, el sistema no está escuchando la huella). Si la pantalla de bloqueo del sistema está activa y desbloqueas con huella, el apagado falso se quita solo (`USER_PRESENT`).  
 8. Si configuraste un webhook HTTPS, muévete un poco y confirma que llega un JSON con lat/lon, y que `files/location_log.txt` tiene líneas nuevas.  
 9. (Opcional, consciente) Prueba el reinicio forzado encendido + volumen ~10 s: el teléfono **sí** debe reiniciarse. Es un límite de hardware, no un fallo de la app.
 
@@ -216,7 +220,9 @@ app/src/main/java/com/george/antirrobo/
   fakeoff/FakeOffOverlay.kt               # Gestos de desbloqueo y apagado real
   fakeoff/AudioAndLightsSilencer.kt
   unlock/UnlockComboDetector.kt           # Volumen + gesto
-  unlock/AutoUnlockWatchdog.kt            # Handler + hilo de respaldo
+  unlock/AutoUnlockWatchdog.kt            # elapsedRealtime + 2 hilos + alarma exacta
+  unlock/FingerprintUnlockActivity.kt     # Huella experimental sin BiometricPrompt
+  receiver/AutoUnlockAlarmReceiver.kt     # Alarma que despierta la CPU
   location/LocationLogger.kt              # Fused Location o LocationManager + webhook
   nubia/NubiaHardwareController.kt        # Intentos NO VERIFICADOS de RGB/ventilador
   policy/DeviceOwnerHelper.kt             # Ruta adb, documentada
@@ -229,6 +235,29 @@ app/src/main/java/com/george/antirrobo/
 
 ---
 
+## Cambios en v0.1.1
+
+1. **Auto-desbloqueo que no disparaba (corregido).** Causa raíz: tras `addView()` del overlay se comprobaba `isAttachedToWindow`, que todavía es `false` hasta el siguiente frame; el código lo tomaba como error, no marcaba el estado como activo y **nunca arrancaba el temporizador**, dejando el overlay negro puesto. Además, `Handler.postDelayed` usa `uptimeMillis`, que se detiene si la CPU se duerme. Ahora: el temporizador se arranca antes que todo, con fecha límite en `elapsedRealtime`, ticks cada 500 ms en dos hilos, alarma exacta `setExactAndAllowWhileIdle` (ELAPSED_REALTIME_WAKEUP) que despierta la CPU, WakeLock parcial mientras dura el apagado falso, revisión del servicio en primer plano cada segundo, nunca se apilan overlays, y al salir se restaura brillo/audio/No Molestar/hápticos y se enciende la pantalla si estaba apagada.
+2. **Vibración al mantener volumen (corregido en lo posible).** Causa raíz: por el bug 1 el estado “activo” quedaba en falso y la tecla no se consumía, así que el sistema cambiaba el volumen y vibraba. Ahora se consumen DOWN, repeticiones y UP mientras dura el apagado falso (la combinación de desbloqueo se registra antes de consumir), el overlay tiene `isHapticFeedbackEnabled=false`, y se ponen en 0 `HAPTIC_FEEDBACK_ENABLED` y `SOUND_EFFECTS_ENABLED` (con permiso “Modificar ajustes del sistema”), además de modo silencio y No Molestar total; todo se restaura al salir.
+3. **Huella.** Ver la sección siguiente.
+4. **El bloqueo normal ya no dispara el apagado falso.** Solo el menú de apagado (pulsación larga). `SCREEN_OFF` queda como opción, apagada por defecto.
+
+## Huella digital en apagado falso
+
+Lo que hace la app:
+
+- **No usa `BiometricPrompt`**, porque dibuja su propia hoja/animación.
+- Si el teléfono estaba **desbloqueado** al entrar al apagado falso (lo normal con la pulsación larga), el sistema **no está escuchando la huella**: poner el dedo no debe mostrar el círculo ni vibrar. La forma de salir es el gesto de volumen + swipe o el auto-desbloqueo.
+- Si la **pantalla de bloqueo del sistema** está activa y la desbloqueas con huella o PIN, la app recibe `ACTION_USER_PRESENT` y quita el apagado falso sola.
+- **Opción experimental “Huella silenciosa”** (apagada por defecto): abre una actividad negra debajo del overlay y escucha con la API antigua `FingerprintManager.authenticate()`, que no tiene ventana propia. Si la huella es válida, sale del apagado falso.
+
+Lo que **no se puede garantizar sin root** (no verificado en el Red Magic 11 Pro):
+
+- En sensores **bajo pantalla**, el **círculo/iluminación** del sensor y la **vibración** de éxito/fallo los dibuja y dispara **SystemUI / el servicio biométrico del sistema** (o la capa del fabricante), fuera de la ventana de la app. Si la pantalla de bloqueo o la opción experimental están escuchando la huella, esa animación y esa vibración **pueden aparecer** y una app normal no las puede ocultar.
+- `FingerprintManager` está deprecado (API 28) y algunos firmwares lo rechazan o lo redirigen a la UI del sistema.
+- El sensor bajo pantalla suele necesitar la pantalla encendida (aunque esté negra) para funcionar.
+- `HAPTIC_FEEDBACK_ENABLED=0` apaga hápticos de toque, pero **no** necesariamente la vibración del sensor de huella ni hápticos que el fabricante dispare desde el HAL.
+
 ## 12. Límites que debes tener claros
 
 1. Sin root **no** se intercepta `KEYCODE_POWER` antes que el sistema.  
@@ -239,7 +268,9 @@ app/src/main/java/com/george/antirrobo/
 6. Las luces RGB y el ventilador **no** están verificados.  
 7. El auto-desbloqueo (10 s por defecto) es a propósito para no dejarte fuera; un timeout corto reduce el valor antirrobo, uno largo te deja más tiempo “fuera” si te equivocas de gesto. Tú lo eliges.  
 8. El webhook envía coordenadas: usa HTTPS y una URL tuya.  
-9. Esta app es para el dueño del teléfono, no para instalarse en un aparato ajeno.
+9. Esta app es para el dueño del teléfono, no para instalarse en un aparato ajeno.  
+10. Consumir las teclas de volumen desde accesibilidad evita el cambio de volumen; si el firmware de Nubia vibra en el paso de volumen antes de entregar la tecla (a nivel de política de sistema), esa vibración no se puede quitar sin root. No verificado.  
+11. Sin el permiso de alarmas exactas (en Android 14 una app sideload lo recibe con `USE_EXACT_ALARM`), la alarma de respaldo puede retrasarse; los ticks con WakeLock siguen funcionando.
 
 ---
 

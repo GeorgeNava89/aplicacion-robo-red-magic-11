@@ -77,9 +77,13 @@ class AntirroboAccessibilityService : AccessibilityService() {
     override fun onKeyEvent(event: KeyEvent): Boolean {
         val prefs = AppPreferences.get(this)
         when (event.keyCode) {
-            KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN -> {
+            KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_MUTE -> {
+                // Primero se registra para la combinación de desbloqueo...
                 UnlockComboDetector.onVolumeKey(event)
-                // En apagado falso consumimos el evento para que no salga el panel de volumen.
+                // ...y en apagado falso se CONSUME todo (DOWN, repeticiones y UP):
+                // no cambia el volumen, no aparece el panel y no hay "tic" háptico
+                // del paso de volumen. En v0.1.0 isActive quedaba en false por el
+                // bug del overlay, así que el sistema procesaba la tecla y vibraba.
                 return FakeOffController.isActive
             }
             KeyEvent.KEYCODE_POWER, KeyEvent.KEYCODE_SLEEP, KeyEvent.KEYCODE_SOFT_SLEEP -> {
@@ -134,9 +138,22 @@ class AntirroboAccessibilityService : AccessibilityService() {
         val prefs = AppPreferences.get(this)
         if (!prefs.armed) return
         if (FakeOffController.letPowerDialogThrough) return
-        if (action == android.content.Intent.ACTION_SCREEN_OFF) {
-            EventLog.i(TAG, "SCREEN_OFF con el modo armado: entrando a apagado falso")
-            FakeOffController.enter("broadcast SCREEN_OFF")
+        when (action) {
+            android.content.Intent.ACTION_SCREEN_OFF -> {
+                // v0.1.1: el bloqueo normal (pulsación corta / tiempo de pantalla)
+                // ya NO dispara el apagado falso, salvo que actives la opción.
+                if (prefs.screenOffTrigger) {
+                    EventLog.i(TAG, "SCREEN_OFF + opción activada: entrando a apagado falso")
+                    FakeOffController.enter("broadcast SCREEN_OFF (opción)")
+                }
+            }
+            android.content.Intent.ACTION_USER_PRESENT -> {
+                // El keyguard del sistema se desbloqueó (huella, PIN, patrón):
+                // es el dueño, así que se sale del apagado falso.
+                if (FakeOffController.isActive) {
+                    FakeOffController.exit("desbloqueo del sistema (USER_PRESENT: huella/PIN)")
+                }
+            }
         }
     }
 

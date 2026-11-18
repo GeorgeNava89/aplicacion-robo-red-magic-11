@@ -56,7 +56,10 @@ class AntirroboForegroundService : Service() {
         AppStatus.setFgsRunning(true)
         locationLogger = LocationLogger(this).also { it.start() }
         val recv = ScreenStateReceiver { action ->
-            if (action == Intent.ACTION_SCREEN_OFF && prefs.armed && !FakeOffController.letPowerDialogThrough) {
+            // v0.1.1: solo si la opción (apagada por defecto) está activa.
+            if (action == Intent.ACTION_SCREEN_OFF && prefs.armed && prefs.screenOffTrigger &&
+                !FakeOffController.letPowerDialogThrough
+            ) {
                 // El AccessibilityService también lo escucha y es quien puede
                 // mostrar el overlay. Aquí solo registramos y, si el a11y está
                 // vivo, el controlador ya está bindeado.
@@ -176,7 +179,7 @@ class AntirroboForegroundService : Service() {
         private const val TAG = "AntirroboFGS"
         private const val CHANNEL_ID = "antirrobo_fgs"
         private const val NOTIF_ID = 41
-        private const val WATCHDOG_TICK_MS = 2_000L
+        private const val WATCHDOG_TICK_MS = 1_000L
         const val ACTION_STOP = "com.george.antirrobo.action.STOP_FGS"
         const val ACTION_RESTART_LOCATION = "com.george.antirrobo.action.RESTART_LOCATION"
 

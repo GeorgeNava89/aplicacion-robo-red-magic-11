@@ -67,6 +67,9 @@ class FakeOffOverlay(
         setBackgroundColor(Color.BLACK)
         isClickable = true
         isFocusable = false
+        // v0.1.1: cero hápticos y cero sonidos de toque desde el overlay.
+        isHapticFeedbackEnabled = false
+        isSoundEffectsEnabled = false
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
         keepScreenOn = true
         contentDescription = null
@@ -75,9 +78,10 @@ class FakeOffOverlay(
         }
     }
 
-    fun show() {
-        if (attached) return
-        val wm = service.getSystemService(WindowManager::class.java) ?: return
+    /** Devuelve true si addView() tuvo éxito (la vista se adjunta en el siguiente frame). */
+    fun show(): Boolean {
+        if (attached) return true
+        val wm = service.getSystemService(WindowManager::class.java) ?: return false
         windowManager = wm
         val lp = WindowManager.LayoutParams().apply {
             type = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
@@ -119,6 +123,7 @@ class FakeOffOverlay(
             EventLog.e(TAG, "No se pudo añadir el overlay", t)
             attached = false
         }
+        return attached
     }
 
     fun remove() {
@@ -139,7 +144,7 @@ class FakeOffOverlay(
         }
     }
 
-    fun isShowing(): Boolean = attached && isAttachedToWindow
+    fun isShowing(): Boolean = attached
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()

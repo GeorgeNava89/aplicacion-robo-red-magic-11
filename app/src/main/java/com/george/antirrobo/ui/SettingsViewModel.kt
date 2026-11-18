@@ -32,6 +32,8 @@ data class SettingsUiState(
     val intervalSeconds: Int = AppPreferences.DEFAULT_LOC_INTERVAL,
     val webhookDraft: String = "",
     val diagnostic: Boolean = false,
+    val screenOffTrigger: Boolean = false,
+    val fingerprintSilent: Boolean = false,
     val deviceOwnerText: String = "—",
     val eventLogPath: String = "",
     val locationLogPath: String = "",
@@ -49,6 +51,8 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
             intervalSeconds = prefs.locationIntervalSeconds,
             webhookDraft = prefs.webhookUrl,
             diagnostic = prefs.diagnosticWindows,
+            screenOffTrigger = prefs.screenOffTrigger,
+            fingerprintSilent = prefs.fingerprintSilentAuth,
             eventLogPath = EventLog.filePath(),
             locationLogPath = java.io.File(app.filesDir, LocationLogger.LOG_FILE).absolutePath,
         ),
@@ -73,6 +77,8 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
                 intervalSeconds = prefs.locationIntervalSeconds,
                 webhookDraft = if (it.webhookDraft.isEmpty()) prefs.webhookUrl else it.webhookDraft,
                 diagnostic = prefs.diagnosticWindows,
+                screenOffTrigger = prefs.screenOffTrigger,
+                fingerprintSilent = prefs.fingerprintSilentAuth,
                 deviceOwnerText = policy.statusText(),
                 eventLogPath = EventLog.filePath(),
             )
@@ -94,7 +100,7 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         if (armed) {
             AntirroboForegroundService.start(context)
             EventLog.i(TAG, "Modo ARMADO")
-            toast("Modo armado. El menú de apagado y el SCREEN_OFF entrarán a apagado falso.")
+            toast("Modo armado. Solo el menú de apagado (pulsación larga) entra a apagado falso.")
         } else {
             FakeOffController.exit("desarmado desde ajustes")
             AntirroboForegroundService.stop(context)
@@ -163,6 +169,16 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
             if (next) "Diagnóstico ON: se registran las ventanas en ${EventLog.filePath()}"
             else "Diagnóstico OFF",
         )
+    }
+
+    fun toggleScreenOffTrigger() {
+        prefs.screenOffTrigger = !prefs.screenOffTrigger
+        _ui.update { it.copy(screenOffTrigger = prefs.screenOffTrigger) }
+    }
+
+    fun toggleFingerprintSilent() {
+        prefs.fingerprintSilentAuth = !prefs.fingerprintSilentAuth
+        _ui.update { it.copy(fingerprintSilent = prefs.fingerprintSilentAuth) }
     }
 
     fun applyDeviceOwner() {

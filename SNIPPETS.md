@@ -61,12 +61,34 @@ if (swipeStartedInUnlockZone && longEnough && mostlyVertical) {
 }
 ```
 
-## Auto-desbloqueo
+## Auto-desbloqueo (v0.1.1)
 
 ```kotlin
 fun start(timeoutMs: Long) {
-    fired.set(false)
-    mainHandler.postDelayed({ fire("main") }, timeoutMs)
-    backupHandler.postDelayed({ mainHandler.post { fire("backup") } }, timeoutMs + 1_500L)
+    val due = SystemClock.elapsedRealtime() + timeoutMs   // avanza aunque la CPU duerma
+    deadline.set(due); running.set(true)
+    mainHandler.post(mainTick)                             // revisa cada 500 ms
+    backupHandler.postDelayed(backupTick, 1_000L)          // hilo de respaldo
+    am.setExactAndAllowWhileIdle(ELAPSED_REALTIME_WAKEUP, due, alarmPi) // despierta la CPU
 }
+// FakeOffController.enter(): WakeLock parcial + watchdog.start() ANTES del overlay;
+// el éxito del overlay lo decide addView(), no isAttachedToWindow.
+```
+
+## Teclas de volumen en apagado falso (sin vibración)
+
+```kotlin
+KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_MUTE -> {
+    UnlockComboDetector.onVolumeKey(event)   // primero la combinación
+    return FakeOffController.isActive        // consume DOWN, repeticiones y UP
+}
+// overlay: isHapticFeedbackEnabled = false; isSoundEffectsEnabled = false
+// silencer: HAPTIC_FEEDBACK_ENABLED=0, SOUND_EFFECTS_ENABLED=0, DND NONE, ringer SILENT
+```
+
+## Disparadores y huella
+
+```kotlin
+Intent.ACTION_SCREEN_OFF -> if (prefs.screenOffTrigger) FakeOffController.enter(...) // apagado por defecto
+Intent.ACTION_USER_PRESENT -> if (FakeOffController.isActive) FakeOffController.exit("huella/PIN del sistema")
 ```

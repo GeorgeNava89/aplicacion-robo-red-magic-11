@@ -60,6 +60,8 @@ fun SettingsScreen(
     onOpenAppInfo: () -> Unit,
     onTestFakeOff: () -> Unit,
     onToggleDiagnostic: () -> Unit,
+    onToggleScreenOffTrigger: () -> Unit,
+    onToggleFingerprintSilent: () -> Unit,
     onApplyDeviceOwner: () -> Unit,
     onClearDeviceOwner: () -> Unit,
     onRestartFgs: () -> Unit,
@@ -208,6 +210,30 @@ fun SettingsScreen(
             Text(
                 "Mantener encendido + volumen unos 10 segundos fuerza un reinicio a nivel de hardware/bootloader. Eso no lo puede bloquear ninguna app, ni con root, de forma fiable. Es una vía de escape deliberada del teléfono.",
                 style = MaterialTheme.typography.bodySmall,
+            )
+        }
+
+        CardSection(title = "Disparadores y huella (v0.1.1)") {
+            Text(
+                "Por defecto SOLO el menú de apagado (pulsación larga de encendido) activa el apagado falso. El bloqueo normal de pantalla no lo activa.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("También al apagar la pantalla (SCREEN_OFF)", modifier = Modifier.weight(1f))
+                Switch(checked = ui.screenOffTrigger, onCheckedChange = { onToggleScreenOffTrigger() })
+            }
+            Text(
+                "Si desbloqueas el teléfono con huella/PIN desde la pantalla de bloqueo del sistema, el apagado falso se quita solo.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Huella silenciosa (EXPERIMENTAL)", modifier = Modifier.weight(1f))
+                Switch(checked = ui.fingerprintSilent, onCheckedChange = { onToggleFingerprintSilent() })
+            }
+            Text(
+                "Usa la API antigua de huella sin ventana propia. No verificado en Red Magic: el sistema puede mostrar el círculo del sensor y vibrar, y eso no se puede ocultar sin root.",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
