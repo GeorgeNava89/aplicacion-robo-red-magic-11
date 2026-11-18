@@ -131,6 +131,14 @@
             android:theme="@style/Theme.Antirrobo.Black" />
 
         <receiver
+            android:name=".lightstrip.LightStripActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.george.antirrobo.action.LIGHT_STRIP_OFF" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
             android:name=".receiver.AutoUnlockAlarmReceiver"
             android:exported="false" />
 

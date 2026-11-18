@@ -417,7 +417,35 @@ private fun SettingsCard(
             FilledTonalButton(onClick = { onAction("lock_now") }) { Text("Bloquear ahora", maxLines = 1) }
             OutlinedButton(onClick = { onAction("lock_test") }) { Text("Probar (30 s)", maxLines = 1) }
         }
+        LightStripSection(ui, onAction)
     }
+}
+
+@Composable
+private fun LightStripSection(ui: SettingsUiState, onAction: (String) -> Unit) {
+    var labels by rememberSaveable(ui.stripLabels) { mutableStateOf(ui.stripLabels) }
+    HorizontalDivider()
+    Text("Franja de luz", style = MaterialTheme.typography.titleSmall)
+    Text(
+        "Solo se apaga si está encendida; si no se puede saber, no se toca. Nunca se enciende sola.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    SwitchRow("Apagar al entrar en apagado falso", ui.stripOnFakeOff) { onAction("strip_fakeoff") }
+    SwitchRow("Apagar al activar Bloqueo con luces", ui.stripOnLock) { onAction("strip_lock") }
+    OutlinedTextField(
+        value = labels,
+        onValueChange = { labels = it },
+        label = { Text("Nombre del mosaico (separa con comas)") },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        trailingIcon = {
+            IconButton(onClick = { onAction("strip_labels:$labels") }) {
+                Icon(Icons.Filled.Save, contentDescription = "Guardar nombre")
+            }
+        },
+    )
+    FilledTonalButton(onClick = { onAction("strip_now") }) { Text("Apagar franja de luz ahora", maxLines = 1) }
 }
 
 @Composable

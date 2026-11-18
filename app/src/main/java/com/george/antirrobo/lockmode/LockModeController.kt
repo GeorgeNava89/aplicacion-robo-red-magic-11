@@ -77,6 +77,11 @@ object LockModeController {
         main.removeCallbacksAndMessages(null)
         if (demo) main.postDelayed({ deactivate("fin de la prueba (30 s)") }, DEMO_MS)
         showOverlay(service)
+        if (prefs.stripOffOnLockMode) {
+            main.postDelayed({
+                if (isActive) com.george.antirrobo.lightstrip.LightStripToggler.turnOffIfOn("bloqueo con luces")
+            }, 800L)
+        }
         AppStatus.setLastEvent(if (demo) "Prueba de bloqueo (30 s)" else "Bloqueo con luces activo")
         EventLog.i(TAG, "Activado ($reason, demo=$demo)")
         return true

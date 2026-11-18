@@ -43,6 +43,9 @@ data class SettingsUiState(
     val decoyStyle: String = "system",
     val lockPin: Boolean = true,
     val lockActive: Boolean = false,
+    val stripOnFakeOff: Boolean = false,
+    val stripOnLock: Boolean = false,
+    val stripLabels: String = "",
     val ghostGuidesReal: Boolean = false,
     val lightsOnLock: Boolean = true,
     val rgbKeyLabel: String = "",
@@ -100,6 +103,9 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
                 decoyStyle = prefs.decoyStyle,
                 lockPin = prefs.lockModeAllowPin,
                 lockActive = prefs.lockModeActive,
+                stripOnFakeOff = prefs.stripOffOnFakeOff,
+                stripOnLock = prefs.stripOffOnLockMode,
+                stripLabels = prefs.stripLabels,
                 ghostGuidesReal = prefs.ghostGuidesReal,
                 lightsOnLock = prefs.rgbOffOnLock,
                 rgbKeyLabel = rgbLabel(),
@@ -221,12 +227,23 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
             "lock_pin" -> prefs.lockModeAllowPin = !prefs.lockModeAllowPin
             "lock_now" -> com.george.antirrobo.lockmode.LockModeController.activate(context, demo = false)
             "lock_test" -> com.george.antirrobo.lockmode.LockModeController.activate(context, demo = true)
+            "strip_fakeoff" -> prefs.stripOffOnFakeOff = !prefs.stripOffOnFakeOff
+            "strip_lock" -> prefs.stripOffOnLockMode = !prefs.stripOffOnLockMode
+            "strip_now" -> com.george.antirrobo.lightstrip.LightStripToggler.turnOffIfOn("botón en ajustes")
+            else -> if (action.startsWith("strip_labels:")) {
+                prefs.stripLabels = action.removePrefix("strip_labels:").ifBlank {
+                    com.george.antirrobo.lightstrip.LightStripLogic.DEFAULT_LABELS
+                }
+            }
         }
         _ui.update {
             it.copy(
                 decoyStyle = prefs.decoyStyle,
                 lockPin = prefs.lockModeAllowPin,
                 lockActive = prefs.lockModeActive,
+                stripOnFakeOff = prefs.stripOffOnFakeOff,
+                stripOnLock = prefs.stripOffOnLockMode,
+                stripLabels = prefs.stripLabels,
             )
         }
     }

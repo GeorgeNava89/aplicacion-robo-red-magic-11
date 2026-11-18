@@ -156,11 +156,20 @@ class AntirroboForegroundService : Service() {
             Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+        // v0.1.5: acción "Apagar luces" (solo apaga si están encendidas).
+        val stripOff = PendingIntent.getBroadcast(
+            this,
+            1,
+            Intent(com.george.antirrobo.lightstrip.LightStripActionReceiver.ACTION)
+                .setPackage(packageName),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(getString(R.string.fgs_notification_title))
             .setContentText(getString(R.string.fgs_notification_text))
             .setContentIntent(open)
+            .addAction(0, "Apagar luces", stripOff)
             .setOngoing(true)
             .setSilent(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)

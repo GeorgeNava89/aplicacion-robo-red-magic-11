@@ -46,6 +46,7 @@ class AntirroboAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         EventLog.init(this)
         FakeOffController.bind(this)
+        com.george.antirrobo.lightstrip.LightStripToggler.bind(this) // v0.1.5
         LockModeController.bind(this) // v0.1.4: re-bloquea si "Bloqueo con luces" estaba activo
         AppStatus.setAccessibilityRunning(true)
         AppStatus.setLastEvent("Servicio de accesibilidad conectado")
@@ -61,6 +62,9 @@ class AntirroboAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
+        // v0.1.5: mientras abrimos Ajustes rápidos para la Franja de luz, no se
+        // interpreta el panel como menú de apagado.
+        if (com.george.antirrobo.lightstrip.LightStripToggler.isBusy) return
         val prefs = AppPreferences.get(this)
         if (prefs.diagnosticWindows && event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             EventLog.i(TAG, "DIAG ventana: ${describe(event)}")

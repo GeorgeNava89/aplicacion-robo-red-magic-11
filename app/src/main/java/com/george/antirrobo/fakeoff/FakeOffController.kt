@@ -141,6 +141,13 @@ object FakeOffController {
         }
         overlay = view
 
+        // v0.1.5: apagar la Franja de luz SOLO si está encendida (opcional).
+        if (prefs.stripOffOnFakeOff) {
+            main.postDelayed({
+                if (active.get()) com.george.antirrobo.lightstrip.LightStripToggler.turnOffIfOn("apagado falso")
+            }, 800L)
+        }
+
         // 4) Huella experimental (apagada por defecto): actividad negra sin UI propia.
         if (prefs.fingerprintSilentAuth) {
             safe("lanzar huella experimental") {

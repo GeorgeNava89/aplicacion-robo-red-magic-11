@@ -7,7 +7,7 @@ Paquete: `com.george.antirrobo`
 
 > **Esto es un prototipo del dueño del aparato, no un candado absoluto.** Sin root, Android no deja que una app atrape el botón de encendido *antes* que el sistema. El menú de apagado se detecta y se cierra lo más rápido posible, pero puede verse un instante, y alguien podría alcanzar a tocar “Apagar”. El reinicio forzado de hardware (encendido + volumen alrededor de 10 segundos) **no lo bloquea nadie**.
 
-> **Versión 0.1.4.** Ver *Cambios en v0.1.4*, *Cambios en v0.1.3*, *Cambios en v0.1.2*, *Cambios en v0.1.1* y *Huella digital en apagado falso* más abajo.
+> **Versión 0.1.5.** Ver *Cambios en v0.1.5*, *Cambios en v0.1.4*, *Cambios en v0.1.3*, *Cambios en v0.1.2*, *Cambios en v0.1.1* y *Huella digital en apagado falso* más abajo.
 
 Hay una **red de seguridad**: si el gesto de desbloqueo falla o algo sale mal, el teléfono se desbloquea solo a los **10 segundos** (configurable). El overlay se quita también si el servicio de accesibilidad se interrumpe o se destruye. El teléfono **nunca** queda bloqueado de forma permanente.
 
@@ -239,6 +239,44 @@ app/src/main/java/com/george/antirrobo/
 ```
 
 ---
+
+## Cambios en v0.1.5 — Franja de luz
+
+### Qué hay detrás del mosaico “Franja de luz” (investigación)
+- **No hay fuente pública** que diga qué clave o servicio usa ese mosaico en el Red Magic 11 Pro. Nubia no lo documenta y no encontré SystemUI descompilado para este modelo.
+- **Red Magic 9 Pro** (repo GitHub DoganM95/Red-Magic): en la tabla **Global**, `switch_video_malp_enable` (0/1) enciende o apaga los LED en el modo “Media Atmosphere LED”, y `nubia_media_lamp_mode` elige el color. Escribir en Global exige `WRITE_SECURE_SETTINGS` concedido con adb. **No verificado en el 11 Pro**, y no está claro que sea el interruptor general de la franja.
+- **Red Magic 9 Pro**, ventilador (Reddit): tabla **System**, `fan_colorful_light_preview`, `fan_colorful_light_color_select`, `fan_colorful_light_effect_select`. Son claves de OEM: con solo `WRITE_SETTINGS`, Android no deja escribir claves no públicas (targetSdk ≥ 23).
+- **Red Magic 11 Pro** (guía de Reddit para ROMs personalizadas): los LED del logo, los hombros y el ventilador se controlan por sysfs (`/sys/class/leds/aw22xxx_led/effect` + `cfg`, más `/sys/kernel/fan/fan_enable`). **Requiere root**, así que aquí no se usa.
+- **Conclusión:** la clave exacta del mosaico es **desconocida**. El Diagnóstico de luces (ahora también busca `lamp|malp|strip|atmosphere`) sirve para encontrarla con el método A/B: escanear, cambiar el mosaico, volver a escanear.
+
+### Qué se implementó
+Regla dura: **solo se apaga si está ENCENDIDA**. Siempre se lee el estado primero.
+- Si está apagada → no se hace nada.
+- Si el estado es **desconocido** → no se hace nada.
+- **Nunca** se enciende. **No hay** “restaurar al desbloquear”.
+- Tras el único toque se vuelve a leer. Si sigue encendida, **no** se toca otra vez; solo se registra en el log.
+
+Dos caminos:
+1. **Clave directa:** si el Diagnóstico de luces guardó una clave con sus valores de encendido y apagado, se lee la clave. Solo si vale “encendido” se escribe “apagado” y se vuelve a leer. Si vale otra cosa, se intenta el camino 2.
+2. **Accesibilidad:**
+   - Se abre Ajustes rápidos y se busca el mosaico por su nombre (configurable; por defecto “Franja de luz, Light strip, Lightstrip, Tira de luz, Tira LED”).
+   - Se lee su estado: marcado/no marcado, descripción de estado (“Activado/Desactivado”, “On/Off”) o descripción.
+   - Solo si está encendido se toca una vez, se verifica y se cierra el panel.
+   - Límite total de 5 s; nunca hay más de un intento a la vez.
+   - No corre con la pantalla apagada ni durante una llamada. Mientras corre, el panel no se confunde con el menú de apagado.
+
+Dónde se usa (las dos opciones vienen apagadas):
+- “Apagar al entrar en apagado falso”.
+- “Apagar al activar Bloqueo con luces”.
+- Botón **“Apagar franja de luz ahora”** en Ajustes.
+- Acción **“Apagar luces”** en la notificación del servicio.
+
+**Límites:**
+- El panel puede verse un instante; en apagado falso o en el bloqueo queda debajo de nuestra ventana negra.
+- El nombre del mosaico puede variar con el idioma o la versión.
+- Si el mosaico está en otra página del panel, no se encuentra (se registra y no se toca).
+- Necesita la pantalla encendida.
+- Si Nubia no expone el estado del mosaico a la accesibilidad, el estado será “desconocido” y nunca se tocará.
 
 ## Cambios en v0.1.4
 

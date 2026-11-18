@@ -30,7 +30,7 @@ import java.util.Locale
 object LightsDiagnostics {
 
     private const val TAG = "LightsDiag"
-    val KEY_PATTERN = Regex("light|led|rgb|breath|ambient|fan|nubia|redmagic|nb_|zte", RegexOption.IGNORE_CASE)
+    val KEY_PATTERN = Regex("light|led|rgb|breath|ambient|fan|nubia|redmagic|nb_|zte|lamp|malp|strip|atmosphere", RegexOption.IGNORE_CASE)
 
     data class Entry(val table: String, val key: String, val value: String?)
     data class Diff(val table: String, val key: String, val before: String?, val after: String?)
