@@ -24,6 +24,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import com.george.antirrobo.nubia.LightsDiagnostics
+import com.george.antirrobo.nubia.NubiaHardwareController
 
 data class SettingsUiState(
     val status: StatusSnapshot = StatusSnapshot(),
@@ -34,6 +38,12 @@ data class SettingsUiState(
     val diagnostic: Boolean = false,
     val screenOffTrigger: Boolean = false,
     val fingerprintSilent: Boolean = false,
+    val lightsOnLock: Boolean = true,
+    val rgbKeyLabel: String = "",
+    val scanASummary: String = "",
+    val scanBSummary: String = "",
+    val lightDiffs: List<LightsDiagnostics.Diff> = emptyList(),
+    val lightsMessage: String = "",
     val deviceOwnerText: String = "—",
     val eventLogPath: String = "",
     val locationLogPath: String = "",
@@ -79,6 +89,8 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
                 diagnostic = prefs.diagnosticWindows,
                 screenOffTrigger = prefs.screenOffTrigger,
                 fingerprintSilent = prefs.fingerprintSilentAuth,
+                lightsOnLock = prefs.rgbOffOnLock,
+                rgbKeyLabel = rgbLabel(),
                 deviceOwnerText = policy.statusText(),
                 eventLogPath = EventLog.filePath(),
             )
@@ -103,7 +115,8 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
             toast("Modo armado. Solo el menú de apagado (pulsación larga) entra a apagado falso.")
         } else {
             FakeOffController.exit("desarmado desde ajustes")
-            AntirroboForegroundService.stop(context)
+            // Sigue corriendo si "Apagar luces RGB al bloquear" lo necesita.
+            AntirroboForegroundService.sync(context)
             EventLog.i(TAG, "Modo DESARMADO")
             toast("Modo desarmado.")
         }
@@ -179,6 +192,62 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     fun toggleFingerprintSilent() {
         prefs.fingerprintSilentAuth = !prefs.fingerprintSilentAuth
         _ui.update { it.copy(fingerprintSilent = prefs.fingerprintSilentAuth) }
+    }
+
+    // ---------- v0.1.2: luces RGB ----------
+
+    private fun rgbLabel(): String =
+        if (prefs.rgbKeyName.isBlank()) "" else
+            "${prefs.rgbKeyTable}/${prefs.rgbKeyName} (encendidas=${prefs.rgbOnValue}, apagadas=${prefs.rgbOffValue})"
+
+    fun toggleLightsOnLock(context: Context) {
+        prefs.rgbOffOnLock = !prefs.rgbOffOnLock
+        _ui.update { it.copy(lightsOnLock = prefs.rgbOffOnLock) }
+        AntirroboForegroundService.sync(context)
+    }
+
+    fun scanLights(label: String) {
+        viewModelScope.launch {
+            val r = withContext(Dispatchers.IO) { LightsDiagnostics.scan(getApplication(), label) }
+            val summary = "${r.entries.size} claves" + if (r.errors.isNotEmpty()) " · ${r.errors.size} errores" else ""
+            val diffs = LightsDiagnostics.diff()
+            _ui.update {
+                if (label == "A") it.copy(scanASummary = summary, lightDiffs = diffs, lightsMessage = "Guardado: ${r.file}")
+                else it.copy(scanBSummary = summary, lightDiffs = diffs, lightsMessage = "Guardado: ${r.file}")
+            }
+            if (label == "B" && diffs.isEmpty()) {
+                toast("Ninguna clave cambió. Puede que Game Space no use Settings (ver Ayuda).")
+            }
+        }
+    }
+
+    fun useLightKey(context: Context, d: LightsDiagnostics.Diff) {
+        prefs.rgbKeyTable = d.table
+        prefs.rgbKeyName = d.key
+        prefs.rgbOnValue = d.before ?: "1"
+        prefs.rgbOffValue = d.after ?: "0"
+        prefs.rgbSavedValue = ""
+        prefs.rgbOffByLock = false
+        _ui.update { it.copy(rgbKeyLabel = rgbLabel(), lightsMessage = "Clave guardada: ${d.table}/${d.key}") }
+        AntirroboForegroundService.sync(context)
+    }
+
+    fun clearLightKey(context: Context) {
+        prefs.rgbKeyTable = ""
+        prefs.rgbKeyName = ""
+        prefs.rgbSavedValue = ""
+        prefs.rgbOffByLock = false
+        _ui.update { it.copy(rgbKeyLabel = "", lightsMessage = "Clave borrada") }
+        AntirroboForegroundService.sync(context)
+    }
+
+    fun testLights(off: Boolean) {
+        viewModelScope.launch {
+            val r = withContext(Dispatchers.IO) {
+                NubiaHardwareController(getApplication()).setRgbConfigured(off)
+            }
+            _ui.update { it.copy(lightsMessage = r) }
+        }
     }
 
     fun applyDeviceOwner() {

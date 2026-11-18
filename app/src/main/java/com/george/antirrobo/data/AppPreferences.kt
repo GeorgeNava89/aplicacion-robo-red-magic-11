@@ -76,6 +76,39 @@ class AppPreferences private constructor(context: Context) {
         get() = prefs.getBoolean(KEY_FP_SILENT, false)
         set(value) = prefs.edit { putBoolean(KEY_FP_SILENT, value) }
 
+    /** v0.1.2: apagar luces RGB al bloquear (encendido por defecto). */
+    var rgbOffOnLock: Boolean
+        get() = prefs.getBoolean("rgb_off_on_lock", true)
+        set(value) = prefs.edit { putBoolean("rgb_off_on_lock", value) }
+
+    var rgbKeyTable: String
+        get() = prefs.getString("rgb_key_table", "") ?: ""
+        set(value) = prefs.edit { putString("rgb_key_table", value) }
+
+    var rgbKeyName: String
+        get() = prefs.getString("rgb_key_name", "") ?: ""
+        set(value) = prefs.edit { putString("rgb_key_name", value) }
+
+    var rgbOnValue: String
+        get() = prefs.getString("rgb_on_value", "1") ?: "1"
+        set(value) = prefs.edit { putString("rgb_on_value", value) }
+
+    var rgbOffValue: String
+        get() = prefs.getString("rgb_off_value", "0") ?: "0"
+        set(value) = prefs.edit { putString("rgb_off_value", value) }
+
+    /** Valor real antes de apagarlas por bloqueo, para devolverlo igual. */
+    var rgbSavedValue: String
+        get() = prefs.getString("rgb_saved_value", "") ?: ""
+        set(value) = prefs.edit { putString("rgb_saved_value", value) }
+
+    var rgbOffByLock: Boolean
+        get() = prefs.getBoolean("rgb_off_by_lock", false)
+        set(value) = prefs.edit { putBoolean("rgb_off_by_lock", value) }
+
+    val lightsFeatureActive: Boolean
+        get() = rgbOffOnLock && rgbKeyName.isNotBlank()
+
     var snapshotBrightness: Int
         get() = prefs.getInt(KEY_BRIGHTNESS, -1)
         set(value) = prefs.edit { putInt(KEY_BRIGHTNESS, value) }

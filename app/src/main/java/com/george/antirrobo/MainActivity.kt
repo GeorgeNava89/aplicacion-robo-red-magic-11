@@ -103,6 +103,11 @@ class MainActivity : ComponentActivity() {
                     onToggleFingerprintSilent = { viewModel.toggleFingerprintSilent() },
                     onApplyDeviceOwner = { viewModel.applyDeviceOwner() },
                     onClearDeviceOwner = { viewModel.clearDeviceOwner() },
+                    onToggleLightsOnLock = { viewModel.toggleLightsOnLock(this) },
+                    onScanLights = { viewModel.scanLights(it) },
+                    onUseLightKey = { viewModel.useLightKey(this, it) },
+                    onClearLightKey = { viewModel.clearLightKey(this) },
+                    onTestLights = { viewModel.testLights(it) },
                     onRestartFgs = {
                         AntirroboForegroundService.start(this)
                         viewModel.refresh(this)

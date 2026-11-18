@@ -25,8 +25,8 @@ class BootReceiver : BroadcastReceiver() {
         if (prefs.needsRestore) {
             AudioAndLightsSilencer(context).restoreIfNeeded()
         }
-        if (prefs.armed) {
-            AntirroboForegroundService.start(context)
+        if (prefs.armed || prefs.lightsFeatureActive) {
+            AntirroboForegroundService.sync(context)
         }
     }
 

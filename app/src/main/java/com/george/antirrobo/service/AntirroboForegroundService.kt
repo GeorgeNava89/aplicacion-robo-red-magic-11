@@ -1,5 +1,6 @@
 package com.george.antirrobo.service
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -21,7 +22,9 @@ import com.george.antirrobo.data.AppStatus
 import com.george.antirrobo.fakeoff.AudioAndLightsSilencer
 import com.george.antirrobo.fakeoff.FakeOffController
 import com.george.antirrobo.location.LocationLogger
+import com.george.antirrobo.nubia.LockLightsController
 import com.george.antirrobo.receiver.ScreenStateReceiver
+import com.george.antirrobo.util.PermissionChecker
 import com.george.antirrobo.util.EventLog
 
 /**
@@ -36,6 +39,7 @@ class AntirroboForegroundService : Service() {
 
     private val main = Handler(Looper.getMainLooper())
     private var locationLogger: LocationLogger? = null
+    private var lockLights: LockLightsController? = null
     private var screenReceiver: ScreenStateReceiver? = null
     private val watchdogTick = object : Runnable {
         override fun run() {
@@ -54,8 +58,12 @@ class AntirroboForegroundService : Service() {
         }
         startInForeground()
         AppStatus.setFgsRunning(true)
-        locationLogger = LocationLogger(this).also { it.start() }
+        syncLocation()
+        val lights = LockLightsController(this)
+        lockLights = lights
         val recv = ScreenStateReceiver { action ->
+            // v0.1.2: luces RGB al bloquear / desbloquear (armado o no).
+            lights.onBroadcast(action)
             // v0.1.1: solo si la opción (apagada por defecto) está activa.
             if (action == Intent.ACTION_SCREEN_OFF && prefs.armed && prefs.screenOffTrigger &&
                 !FakeOffController.letPowerDialogThrough
@@ -81,14 +89,32 @@ class AntirroboForegroundService : Service() {
             }
             ACTION_RESTART_LOCATION -> {
                 locationLogger?.stop()
-                locationLogger = LocationLogger(this).also { it.start() }
+                locationLogger = null
+                syncLocation()
             }
+            else -> syncLocation()
         }
         return START_STICKY
     }
 
+    /**
+     * Mismo comportamiento de ubicación que v0.1.1 (registro con el modo armado).
+     * Si el servicio corre solo por las luces RGB, no se pide ubicación.
+     */
+    private fun syncLocation() {
+        val armed = AppPreferences.get(this).armed
+        if (armed && locationLogger == null) {
+            locationLogger = LocationLogger(this).also { it.start() }
+        } else if (!armed && locationLogger != null) {
+            locationLogger?.stop()
+            locationLogger = null
+        }
+    }
+
     override fun onDestroy() {
         EventLog.i(TAG, "FGS onDestroy")
+        lockLights?.release()
+        lockLights = null
         main.removeCallbacks(watchdogTick)
         try {
             screenReceiver?.unregister(this)
@@ -143,8 +169,12 @@ class AntirroboForegroundService : Service() {
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .build()
 
+        // v0.1.2: tipo location solo si hay permiso (si no, Android 14 lanza
+        // SecurityException en el modo "solo luces").
+        val hasLoc = PermissionChecker.granted(this, Manifest.permission.ACCESS_FINE_LOCATION) ||
+            PermissionChecker.granted(this, Manifest.permission.ACCESS_COARSE_LOCATION)
         val types = if (Build.VERSION.SDK_INT >= 34) {
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION or
+            (if (hasLoc) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0) or
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
         } else if (Build.VERSION.SDK_INT >= 29) {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
@@ -158,9 +188,11 @@ class AntirroboForegroundService : Service() {
                 startForeground(NOTIF_ID, notification)
             }
         } catch (t: Throwable) {
-            EventLog.e(TAG, "startForeground falló; reintento solo con location", t)
+            EventLog.e(TAG, "startForeground falló; reintento con un solo tipo", t)
             try {
-                if (Build.VERSION.SDK_INT >= 29) {
+                if (Build.VERSION.SDK_INT >= 34) {
+                    startForeground(NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+                } else if (Build.VERSION.SDK_INT >= 29) {
                     startForeground(
                         NOTIF_ID,
                         notification,
@@ -186,6 +218,19 @@ class AntirroboForegroundService : Service() {
         fun start(context: Context) {
             val i = Intent(context, AntirroboForegroundService::class.java)
             ContextCompat.startForegroundService(context, i)
+        }
+
+        /** Corre si hace falta (armado o luces al bloquear); si no, se detiene. */
+        fun sync(context: Context) {
+            val prefs = AppPreferences.get(context)
+            if (prefs.armed || prefs.lightsFeatureActive) {
+                ContextCompat.startForegroundService(
+                    context,
+                    Intent(context, AntirroboForegroundService::class.java),
+                )
+            } else {
+                stop(context)
+            }
         }
 
         fun stop(context: Context) {

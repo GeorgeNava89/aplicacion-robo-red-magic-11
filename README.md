@@ -7,7 +7,7 @@ Paquete: `com.george.antirrobo`
 
 > **Esto es un prototipo del dueño del aparato, no un candado absoluto.** Sin root, Android no deja que una app atrape el botón de encendido *antes* que el sistema. El menú de apagado se detecta y se cierra lo más rápido posible, pero puede verse un instante, y alguien podría alcanzar a tocar “Apagar”. El reinicio forzado de hardware (encendido + volumen alrededor de 10 segundos) **no lo bloquea nadie**.
 
-> **Versión 0.1.1.** Ver la sección *Cambios en v0.1.1* y *Huella digital en apagado falso* más abajo.
+> **Versión 0.1.2.** Ver *Cambios en v0.1.2*, *Cambios en v0.1.1* y *Huella digital en apagado falso* más abajo.
 
 Hay una **red de seguridad**: si el gesto de desbloqueo falla o algo sale mal, el teléfono se desbloquea solo a los **10 segundos** (configurable). El overlay se quita también si el servicio de accesibilidad se interrumpe o se destruye. El teléfono **nunca** queda bloqueado de forma permanente.
 
@@ -224,7 +224,9 @@ app/src/main/java/com/george/antirrobo/
   unlock/FingerprintUnlockActivity.kt     # Huella experimental sin BiometricPrompt
   receiver/AutoUnlockAlarmReceiver.kt     # Alarma que despierta la CPU
   location/LocationLogger.kt              # Fused Location o LocationManager + webhook
-  nubia/NubiaHardwareController.kt        # Intentos NO VERIFICADOS de RGB/ventilador
+  nubia/NubiaHardwareController.kt        # Intentos NO VERIFICADOS de RGB/ventilador + clave elegida
+  nubia/LightsDiagnostics.kt              # Escaneo A/B de claves de luces
+  nubia/LockLightsController.kt           # Luces OFF al bloquear, restaurar al desbloquear
   policy/DeviceOwnerHelper.kt             # Ruta adb, documentada
   policy/AntirroboDeviceAdminReceiver.kt
   receiver/ScreenStateReceiver.kt
@@ -234,6 +236,28 @@ app/src/main/java/com/george/antirrobo/
 ```
 
 ---
+
+## Cambios en v0.1.2
+
+1. **Pantalla principal rediseñada.** Arriba, una tarjeta de estado con el interruptor grande Armado/Desarmado, chips de “Servicio” y “Accesibilidad”, la última ubicación en una línea y el botón **Probar apagado falso**. Después, **Permisos** como lista (palomita verde / tache rojo, toca la fila para abrir el ajuste) con un resumen “N/7 listos”. Luego **Ajustes** (auto-desbloqueo, intervalo de ubicación, webhook, interruptores), **Luces RGB** y al final **Ayuda** con secciones plegables (gestos, huella, cuándo se activa, luces, límites, avanzado). La explicación general está en el botón ⓘ.
+2. **Apagar luces RGB al bloquear** (encendido por defecto, pero **no hace nada hasta que elijas una clave** en el diagnóstico).
+   - **Detección de bloqueo:** el servicio en primer plano registra en tiempo de ejecución `SCREEN_OFF`, `SCREEN_ON` y `USER_PRESENT`. Tras `SCREEN_OFF` revisa `KeyguardManager.isKeyguardLocked()` / `isDeviceLocked()` a los 0.5, 3, 10 y 30 s (por el “bloquear después de X s”). Si está bloqueado, apaga las luces. Con `USER_PRESENT` (desbloqueo por huella/PIN) o `SCREEN_ON` sin bloqueo, las devuelve al valor que tenían. El servicio sigue corriendo aunque el modo antirrobo esté desarmado, si esta función está activa y hay clave.
+   - **Control de luces:** Nubia no publica una API. Solo se escribe la clave que **tú** confirmas en el diagnóstico; nunca se escribe a ciegas.
+3. **Diagnóstico de luces.** Lee las tablas `system`, `secure` y `global` y filtra claves con light/led/rgb/breath/ambient/fan/nubia/redmagic. Guarda cada escaneo en `files/lights_scan_*.txt`. Pasos: luces encendidas en Game Space → **A**; apágalas → **B**; la app muestra qué claves cambiaron y con **Usar** guardas una (valor encendido = el de A, apagado = el de B). Botones **Apagar / Encender** para probarla.
+
+**Límites de las luces (no verificado en el aparato):**
+
+- Android 12+ puede ocultar claves no públicas a apps de terceros; el escaneo puede salir incompleto. Alternativa por adb:
+  ```
+  adb shell settings list system | grep -iE 'light|led|rgb|breath|ambient|fan|nubia|redmagic'
+  adb shell settings list secure | grep -iE 'light|led|rgb|breath|ambient|fan|nubia|redmagic'
+  adb shell settings list global | grep -iE 'light|led|rgb|breath|ambient|fan|nubia|redmagic'
+  ```
+- Escribir claves de OEM normalmente **no** se permite solo con “Modificar ajustes del sistema”. Concede una vez:
+  ```
+  adb shell pm grant com.george.antirrobo android.permission.WRITE_SECURE_SETTINGS
+  ```
+- Game Space podría guardar el estado de las luces en su propia base de datos o aplicarlo solo cuando él mismo cambia; entonces cambiar la clave no apaga las luces y este método no sirve sin root.
 
 ## Cambios en v0.1.1
 

@@ -40,6 +40,10 @@ class NubiaHardwareController(private val context: Context) {
      */
     fun tryTurnOffRgbAndFan() {
         attempts.clear()
+        val prefs = com.george.antirrobo.data.AppPreferences.get(context)
+        if (prefs.rgbKeyName.isNotBlank()) {
+            attempts += Attempt("clave elegida en diagnóstico", prefs.rgbKeyName, setRgbConfigured(off = true))
+        }
         EventLog.w(TAG, "INICIO de intentos NO VERIFICADOS de RGB/ventilador Nubia")
         tryGuessedSettings(off = true)
         tryGuessedSysfs(off = true)
@@ -48,6 +52,8 @@ class NubiaHardwareController(private val context: Context) {
     }
 
     fun tryRestoreRgbAndFan() {
+        val prefs = com.george.antirrobo.data.AppPreferences.get(context)
+        if (prefs.rgbKeyName.isNotBlank()) setRgbConfigured(off = false)
         EventLog.w(TAG, "Restaurar RGB/ventilador: no hay snapshot fiable (API no pública). No se revierten claves OEM.")
     }
 
@@ -162,7 +168,70 @@ class NubiaHardwareController(private val context: Context) {
         )
     }
 
+    /**
+     * v0.1.2: control de luces con la clave elegida en "Diagnóstico de luces".
+     * Solo escribe una clave que el usuario confirmó con el escaneo A/B.
+     * Devuelve un texto con el resultado para la bitácora / UI.
+     */
+    fun setRgbConfigured(off: Boolean): String {
+        val prefs = com.george.antirrobo.data.AppPreferences.get(context)
+        val table = prefs.rgbKeyTable
+        val key = prefs.rgbKeyName
+        if (table.isBlank() || key.isBlank()) {
+            return "Sin clave de luces configurada (usa Diagnóstico de luces)"
+        }
+        return try {
+            if (off) {
+                val current = readSetting(context, table, key)
+                // Guarda el valor actual para devolverlo al desbloquear.
+                if (current != null && current != prefs.rgbOffValue) prefs.rgbSavedValue = current
+                val ok = writeSetting(context, table, key, prefs.rgbOffValue)
+                "Luces OFF: $table/$key '$current' → '${prefs.rgbOffValue}' ok=$ok"
+            } else {
+                val restore = prefs.rgbSavedValue.ifBlank { prefs.rgbOnValue }
+                val ok = writeSetting(context, table, key, restore)
+                "Luces restauradas: $table/$key → '$restore' ok=$ok"
+            }
+        } catch (t: Throwable) {
+            "Error con $table/$key: ${t.javaClass.simpleName}: ${t.message} " +
+                "(probablemente falta WRITE_SECURE_SETTINGS vía adb)"
+        }.also { EventLog.i(TAG, it) }
+    }
+
     companion object {
         private const val TAG = "NubiaHW"
+
+        /** Nombres CONJETURADOS (no verificados). */
+        val GUESSED_KEYS = listOf(
+            "nubia_led_on", "nubia_rgb_switch", "redmagic_rgb", "redmagic_led",
+            "game_led_enable", "game_fan_enable", "nubia_fan_switch", "redmagic_fan",
+            "led_side_enable", "breath_led", "notification_light",
+        )
+
+        fun readSetting(context: Context, table: String, key: String): String? {
+            val cr = context.contentResolver
+            return when (table) {
+                "system" -> Settings.System.getString(cr, key)
+                "secure" -> Settings.Secure.getString(cr, key)
+                "global" -> Settings.Global.getString(cr, key)
+                else -> null
+            }
+        }
+
+        /**
+         * Settings.System: claves de OEM normalmente NO se pueden escribir solo con
+         * WRITE_SETTINGS (Android solo deja las públicas). Secure/Global exigen
+         * WRITE_SECURE_SETTINGS, que se concede con adb:
+         *   adb shell pm grant com.george.antirrobo android.permission.WRITE_SECURE_SETTINGS
+         */
+        fun writeSetting(context: Context, table: String, key: String, value: String): Boolean {
+            val cr = context.contentResolver
+            return when (table) {
+                "system" -> Settings.System.putString(cr, key, value)
+                "secure" -> Settings.Secure.putString(cr, key, value)
+                "global" -> Settings.Global.putString(cr, key, value)
+                else -> false
+            }
+        }
     }
 }

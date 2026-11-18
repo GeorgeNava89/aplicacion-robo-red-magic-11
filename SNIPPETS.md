@@ -92,3 +92,12 @@ KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUM
 Intent.ACTION_SCREEN_OFF -> if (prefs.screenOffTrigger) FakeOffController.enter(...) // apagado por defecto
 Intent.ACTION_USER_PRESENT -> if (FakeOffController.isActive) FakeOffController.exit("huella/PIN del sistema")
 ```
+
+## Luces RGB al bloquear (v0.1.2)
+
+```kotlin
+Intent.ACTION_SCREEN_OFF -> for (d in longArrayOf(500, 3_000, 10_000, 30_000))
+    main.postDelayed({ if (km.isKeyguardLocked || km.isDeviceLocked) nubia.setRgbConfigured(off = true) }, d)
+Intent.ACTION_USER_PRESENT -> nubia.setRgbConfigured(off = false) // devuelve el valor guardado
+// La clave sale del escaneo A/B (LightsDiagnostics.diff()); sin clave no se escribe nada.
+```
