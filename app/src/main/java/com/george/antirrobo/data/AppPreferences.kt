@@ -132,11 +132,11 @@ class AppPreferences private constructor(context: Context) {
 
     /** v0.1.5: "Franja de luz" — apagar (solo si está encendida). Sin auto-restaurar. */
     var stripOffOnFakeOff: Boolean
-        get() = prefs.getBoolean("strip_off_fakeoff", false)
+        get() = com.george.antirrobo.FeatureFlags.LIGHT_STRIP && prefs.getBoolean("strip_off_fakeoff", false)
         set(value) = prefs.edit { putBoolean("strip_off_fakeoff", value) }
 
     var stripOffOnLockMode: Boolean
-        get() = prefs.getBoolean("strip_off_lockmode", false)
+        get() = com.george.antirrobo.FeatureFlags.LIGHT_STRIP && prefs.getBoolean("strip_off_lockmode", false)
         set(value) = prefs.edit { putBoolean("strip_off_lockmode", value) }
 
     var stripLabels: String

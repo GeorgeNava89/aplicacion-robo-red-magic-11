@@ -77,7 +77,13 @@ object LockModeController {
         main.removeCallbacksAndMessages(null)
         if (demo) main.postDelayed({ deactivate("fin de la prueba (30 s)") }, DEMO_MS)
         showOverlay(service)
-        if (prefs.stripOffOnLockMode) {
+        // v0.1.6: llamadas → solo No Molestar + timbre en silencio (sin tocar brillo ni luces).
+        try {
+            com.george.antirrobo.fakeoff.AudioAndLightsSilencer(service).silence(screenAndLights = false)
+        } catch (t: Throwable) {
+            EventLog.w(TAG, "No se pudo activar No Molestar", t)
+        }
+        if (com.george.antirrobo.FeatureFlags.LIGHT_STRIP && prefs.stripOffOnLockMode) {
             main.postDelayed({
                 if (isActive) com.george.antirrobo.lightstrip.LightStripToggler.turnOffIfOn("bloqueo con luces")
             }, 800L)
@@ -163,6 +169,16 @@ object LockModeController {
         isActive = false
         isAuthenticating = false
         removeOverlay()
+        // v0.1.6: se quita No Molestar (si el apagado falso sigue, él restaura al salir).
+        serviceRef?.get()?.let { svc ->
+            if (!com.george.antirrobo.fakeoff.FakeOffController.isActive) {
+                try {
+                    com.george.antirrobo.fakeoff.AudioAndLightsSilencer(svc).restoreIfNeeded(force = true)
+                } catch (t: Throwable) {
+                    EventLog.w(TAG, "No se pudo restaurar el audio", t)
+                }
+            }
+        }
         AppStatus.setLastEvent("Bloqueo con luces desactivado: $reason")
         EventLog.i(TAG, "Desactivado: $reason")
     }

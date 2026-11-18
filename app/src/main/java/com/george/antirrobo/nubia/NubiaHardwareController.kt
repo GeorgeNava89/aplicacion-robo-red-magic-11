@@ -76,7 +76,8 @@ class NubiaHardwareController(private val context: Context) {
         )
         val cr = context.contentResolver
         val tables = listOf("system", "global", "secure")
-        for (key in guessedKeys) {
+        // v0.1.6: el ventilador quedó DESACTIVADO; nunca se escriben sus claves.
+        for (key in guessedKeys.filter { com.george.antirrobo.FeatureFlags.FAN_CONTROL || !isFanKey(it) }) {
             for (table in tables) {
                 val result = writeGuessedSetting(cr, table, key, if (off) "0" else "1")
                 attempts += Attempt("Settings.$table (NO VERIFICADO)", key, result)
@@ -130,7 +131,7 @@ class NubiaHardwareController(private val context: Context) {
             "/sys/devices/platform/fan/fan_speed",
         )
         val value = if (off) "0" else "0"
-        for (path in guessed) {
+        for (path in guessed.filter { com.george.antirrobo.FeatureFlags.FAN_CONTROL || !isFanKey(it) }) {
             val f = File(path)
             val result = try {
                 if (!f.exists()) {
@@ -177,6 +178,9 @@ class NubiaHardwareController(private val context: Context) {
         val prefs = com.george.antirrobo.data.AppPreferences.get(context)
         val table = prefs.rgbKeyTable
         val key = prefs.rgbKeyName
+        if (!com.george.antirrobo.FeatureFlags.FAN_CONTROL && isFanKey(key)) {
+            return "Clave de ventilador ($key) ignorada: el ventilador está desactivado desde v0.1.6"
+        }
         if (table.isBlank() || key.isBlank()) {
             return "Sin clave de luces configurada (usa Diagnóstico de luces)"
         }
@@ -201,12 +205,16 @@ class NubiaHardwareController(private val context: Context) {
     companion object {
         private const val TAG = "NubiaHW"
 
+        /** v0.1.6: claves/rutas del ventilador (o térmicas) que ya no se tocan. */
+        fun isFanKey(k: String): Boolean =
+            k.contains("fan", ignoreCase = true) || k.contains("cooling", ignoreCase = true)
+
         /** Nombres CONJETURADOS (no verificados). */
         val GUESSED_KEYS = listOf(
             "nubia_led_on", "nubia_rgb_switch", "redmagic_rgb", "redmagic_led",
             "game_led_enable", "game_fan_enable", "nubia_fan_switch", "redmagic_fan",
             "led_side_enable", "breath_led", "notification_light",
-        )
+        ).filter { com.george.antirrobo.FeatureFlags.FAN_CONTROL || !isFanKey(it) }
 
         fun readSetting(context: Context, table: String, key: String): String? {
             val cr = context.contentResolver

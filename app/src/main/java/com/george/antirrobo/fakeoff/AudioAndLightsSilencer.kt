@@ -26,7 +26,11 @@ class AudioAndLightsSilencer(private val context: Context) {
     private val notifications = context.getSystemService(NotificationManager::class.java)
     private val nubia = NubiaHardwareController(context)
 
-    fun silence() {
+    /**
+     * [screenAndLights] = false (v0.1.6, "Bloqueo con luces"): solo No Molestar,
+     * timbre en silencio, volúmenes y vibración; NO toca brillo ni luces.
+     */
+    fun silence(screenAndLights: Boolean = true) {
         // v0.1.1: si ya estábamos silenciados (re-entrada), NO se vuelve a tomar
         // la foto del estado: se sobrescribiría con "todo en silencio" y al
         // restaurar el teléfono quedaría mudo.
@@ -64,13 +68,31 @@ class AudioAndLightsSilencer(private val context: Context) {
         // del sensor de huella ni la háptica que el OEM dispare a nivel HAL.
         trySetSystemInt(Settings.System.HAPTIC_FEEDBACK_ENABLED, 0)
         trySetSystemInt(Settings.System.SOUND_EFFECTS_ENABLED, 0)
+        if (!screenAndLights) {
+            EventLog.i(TAG, "Silencio para Bloqueo con luces (DND + timbre; brillo y luces intactos)")
+            return
+        }
         trySetSystemBrightness(0)
-        // NO VERIFICADO en Red Magic 11 Pro: luces RGB y ventilador.
+        // NO VERIFICADO en Red Magic 11 Pro: luces RGB (el ventilador ya no se toca desde v0.1.6).
         nubia.tryTurnOffRgbAndFan()
     }
 
-    fun restoreIfNeeded() {
+    /**
+     * v0.1.6: si "Bloqueo con luces" sigue activo (y no es [force]), solo se
+     * regresan brillo/luces del apagado falso; el silencio (DND) se mantiene
+     * hasta que se quite el bloqueo.
+     */
+    fun restoreIfNeeded(force: Boolean = false) {
         if (!prefs.needsRestore) return
+        if (!force && com.george.antirrobo.lockmode.LockModeController.isActive) {
+            val brightness = prefs.snapshotBrightness
+            val mode = prefs.snapshotBrightnessMode
+            if (mode >= 0) trySetBrightnessMode(mode)
+            if (brightness >= 0) trySetSystemBrightness(brightness)
+            nubia.tryRestoreRgbAndFan()
+            EventLog.i(TAG, "Bloqueo con luces activo: se restauró brillo; No Molestar sigue")
+            return
+        }
         try {
             val dnd = prefs.snapshotDndFilter
             if (dnd >= 0 && notifications?.isNotificationPolicyAccessGranted == true) {

@@ -7,7 +7,7 @@ Paquete: `com.george.antirrobo`
 
 > **Esto es un prototipo del dueño del aparato, no un candado absoluto.** Sin root, Android no deja que una app atrape el botón de encendido *antes* que el sistema. El menú de apagado se detecta y se cierra lo más rápido posible, pero puede verse un instante, y alguien podría alcanzar a tocar “Apagar”. El reinicio forzado de hardware (encendido + volumen alrededor de 10 segundos) **no lo bloquea nadie**.
 
-> **Versión 0.1.5.** Ver *Cambios en v0.1.5*, *Cambios en v0.1.4*, *Cambios en v0.1.3*, *Cambios en v0.1.2*, *Cambios en v0.1.1* y *Huella digital en apagado falso* más abajo.
+> **Versión 0.1.6.** Ver *Cambios en v0.1.6*, *Cambios en v0.1.5*, *Cambios en v0.1.4*, *Cambios en v0.1.3*, *Cambios en v0.1.2*, *Cambios en v0.1.1* y *Huella digital en apagado falso* más abajo.
 
 Hay una **red de seguridad**: si el gesto de desbloqueo falla o algo sale mal, el teléfono se desbloquea solo a los **10 segundos** (configurable). El overlay se quita también si el servicio de accesibilidad se interrumpe o se destruye. El teléfono **nunca** queda bloqueado de forma permanente.
 
@@ -30,24 +30,21 @@ Hay una **red de seguridad**: si el gesto de desbloqueo falla o algo sale mal, e
 
 ## 2. Gestos (apréndetelos *antes* de armar)
 
-### Desbloqueo
+### Gestos (desde v0.1.6)
 
-1. Mantén presionado **volumen arriba o abajo** (basta con que esté presionado en algún momento del deslizamiento).
-2. Desliza **hacia arriba** empezando en la **mitad inferior izquierda** de la pantalla, al menos ~30 % de la altura. Empieza un poco **arriba del borde inferior**: el borde lo usa la navegación por gestos del sistema.
+Con el modo **armado**:
 
-Si haces el swipe sin el volumen, no se desbloquea, pero el auto-desbloqueo sigue corriendo.
+| Dónde | Gesto | Qué hace |
+|---|---|---|
+| Teléfono normal | Mantener el botón de encendido | Se cierra el menú real y sale el **menú falso** |
+| Menú falso | Tocar **Apagar** / **Reiniciar** | Animación → **apagado falso** (no se apaga de verdad) |
+| Menú falso | Mantener **Volumen + o −** y deslizar hacia arriba desde la mitad inferior | Se abre el **menú real** del sistema |
+| Menú falso | Tocar fuera / Atrás | Se cierra el menú falso (sigue armado) |
+| Apagado falso | **5 toques**: sup-izq → sup-der → inf-der → inf-izq → centro (hasta 3 s entre toques, esquinas de 25 %) | **Desbloquear** (salir del apagado falso) |
+| Apagado falso | Volumen + deslizar hacia arriba (mitad inferior izquierda) | Se abre el **menú real** del sistema |
+| Apagado falso | Nada / falla | Se quita solo en el tiempo configurado (10 s por defecto) |
 
-### Apagado real (gesto oculto, 5 toques)
-
-Con el apagado falso activo, toca en este orden, con hasta **3 segundos** entre toques. Cada zona ocupa 25 % del ancho y del alto en su esquina:
-
-1. Esquina superior izquierda
-2. Esquina superior derecha
-3. Esquina inferior derecha
-4. Esquina inferior izquierda
-5. Centro
-
-Se quita el overlay y, 0.3 s después, se abre el diálogo de apagado del sistema. Tú confirmas ahí. Activa **“Mostrar gestos fantasma”** para ver las zonas exactas durante las pruebas.
+Empieza el deslizamiento un poco **arriba del borde inferior**, porque el borde lo usa la navegación por gestos. “Mostrar gestos fantasma” dibuja las zonas exactas durante las pruebas.
 
 ### Cómo probarlo sin miedo
 
@@ -239,6 +236,18 @@ app/src/main/java/com/george/antirrobo/
 ```
 
 ---
+
+## Cambios en v0.1.6
+
+- **Gestos reasignados** (ver la tabla de *Gestos*):
+  - Los **5 toques** ahora **solo desbloquean** el apagado falso; ya no abren el menú real.
+  - **Volumen + deslizar hacia arriba** ahora abre el **menú real** del sistema, tanto en el menú falso como en el apagado falso; ya no desbloquea.
+  - Apagar y Reiniciar en el menú falso siguen yendo a la animación y al apagado falso.
+  - Con el menú falso visible, las teclas de volumen ya no suben ni bajan el volumen.
+- **Bloqueo con luces + llamadas:** al activarlo se pone No Molestar y el timbre en silencio; se restaura al salir. No toca el brillo ni las luces. No se contestan ni rechazan llamadas: solo No Molestar.
+- **Ventilador desactivado:** la app ya no escribe claves ni rutas del ventilador (`FeatureFlags.FAN_CONTROL = false`), no lo busca en el Diagnóstico de luces y no deja guardar una clave del ventilador.
+- **Franja de luz (v0.1.5) desactivada** (`FeatureFlags.LIGHT_STRIP = false`): sin opciones en Ajustes, sin acción en la notificación y sin ganchos en el apagado falso ni en el bloqueo. El código se queda, pero no corre.
+- Lo demás sigue igual: auto-desbloqueo de 10 s, gestos fantasma, “Apagando…” de 5.6 s, menú estilo Red Magic con desenfoque fuerte, logo, bloqueo con luces con 5 toques + huella.
 
 ## Cambios en v0.1.5 — Franja de luz
 

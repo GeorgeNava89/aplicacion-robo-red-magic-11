@@ -46,6 +46,10 @@ object LightStripToggler {
     }
 
     fun turnOffIfOn(reason: String) {
+        if (!com.george.antirrobo.FeatureFlags.LIGHT_STRIP) {
+            EventLog.i(TAG, "Franja de luz desactivada en v0.1.6; no se hace nada ($reason)")
+            return
+        }
         if (Looper.myLooper() != Looper.getMainLooper()) {
             main.post { turnOffIfOn(reason) }
             return

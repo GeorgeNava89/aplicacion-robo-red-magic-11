@@ -37,9 +37,11 @@ import com.george.antirrobo.util.EventLog
 class FakeOffOverlay(
     private val service: AccessibilityService,
     private val silencer: AudioAndLightsSilencer,
-    private val onUnlockGesture: () -> Unit,
-    private val onShutdownGesture: () -> Unit,
-    private val onFailedUnlockAttempt: () -> Unit,
+    /** v0.1.6: 5 toques en las esquinas → DESBLOQUEAR (antes: apagado real). */
+    private val onCornerSequence: () -> Unit,
+    /** v0.1.6: Volumen + deslizar hacia arriba → menú REAL del sistema (antes: desbloquear). */
+    private val onVolumeSwipe: () -> Unit,
+    private val onSwipeWithoutVolume: () -> Unit,
     /** v0.1.3: "gestos fantasma" (zonas exactas) — ajuste, apagado por defecto. */
     private val debugHints: Boolean = false,
 ) : View(service) {
@@ -213,8 +215,8 @@ class FakeOffOverlay(
                     is TapSequenceDetector.Result.Progress ->
                         EventLog.i(TAG, "Apagado real: paso ${r.step}/5 (x=${x.toInt()}, y=${y.toInt()})")
                     TapSequenceDetector.Result.Completed -> {
-                        EventLog.i(TAG, "Apagado real: secuencia completa")
-                        onShutdownGesture()
+                        EventLog.i(TAG, "5 toques completos → desbloquear")
+                        onCornerSequence()
                         return true
                     }
                     is TapSequenceDetector.Result.Ignored ->
@@ -301,7 +303,8 @@ class FakeOffOverlay(
         canvas.drawLine(ax, h * 0.82f, ax, h * 0.58f, dashed)
         canvas.drawLine(ax, h * 0.58f, ax - 24 * d, h * 0.58f + 24 * d, dashed)
         canvas.drawLine(ax, h * 0.58f, ax + 24 * d, h * 0.58f + 24 * d, dashed)
-        canvas.drawText("Mantén volumen + desliza", ax, h * 0.55f, labelPaint)
+        canvas.drawText("Volumen + desliza ↑ = menú real", ax, h * 0.55f, labelPaint)
+        canvas.drawText("Toca 1 → 5 para desbloquear", w / 2f, h * 0.5f + minOf(w, h) * taps.centerFraction + 28 * d, labelPaint)
 
         // Zonas 1–5.
         for (i in 0 until TapSequenceDetector.TOTAL) {
@@ -341,7 +344,7 @@ class FakeOffOverlay(
         }
         val volume = UnlockComboDetector.volumeActiveDuring(swipe.startTime, now)
         EventLog.i(TAG, "Deslizamiento válido (cancel=$cancelled), volumen activo=$volume")
-        if (volume) onUnlockGesture() else onFailedUnlockAttempt()
+        if (volume) onVolumeSwipe() else onSwipeWithoutVolume()
     }
 
     companion object {

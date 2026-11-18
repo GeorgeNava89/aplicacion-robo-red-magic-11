@@ -42,7 +42,69 @@ class DecoyPowerMenu(
     private val onEmergency: () -> Unit,
     private val onDismiss: () -> Unit,
     private val style: Style = Style.SYSTEM,
+    /** v0.1.6: Volumen (+/−) + deslizar hacia arriba → menú REAL del sistema. */
+    private val onVolumeSwipe: () -> Unit = {},
+    /** v0.1.6: "gestos fantasma" en el menú falso (solo la pista del deslizamiento). */
+    private val ghost: Boolean = false,
 ) : FrameLayout(service) {
+
+    // Deslizamiento desde la mitad inferior (todo el ancho) hacia arriba.
+    private val swipe = com.george.antirrobo.unlock.SwipeUnlockDetector(startMaxXFraction = 1f)
+    private val hintPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(170, 129, 199, 132); textAlign = Paint.Align.CENTER
+        textSize = 14 * resources.displayMetrics.scaledDensity
+    }
+    private val hintLine = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(150, 129, 199, 132); style = Paint.Style.STROKE
+        strokeWidth = 3 * resources.displayMetrics.density; strokeCap = Paint.Cap.ROUND
+    }
+
+    /**
+     * Se observa TODO toque antes que los botones: si fue Volumen + deslizar
+     * hacia arriba, se abre el menú real y ese toque no llega a los botones.
+     */
+    override fun dispatchTouchEvent(e: MotionEvent): Boolean {
+        if (done) return true
+        val w = width.toFloat()
+        val h = height.toFloat()
+        val loc = IntArray(2).also { getLocationOnScreen(it) }
+        val x = e.rawX - loc[0]
+        val y = e.rawY - loc[1]
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> swipe.onDown(x, y, w, h, e.eventTime)
+            MotionEvent.ACTION_MOVE -> swipe.onMove(x, y)
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                val cancelled = e.actionMasked == MotionEvent.ACTION_CANCEL
+                val outcome = swipe.onEnd(if (cancelled) null else x, if (cancelled) null else y, h, e.eventTime)
+                if (outcome == com.george.antirrobo.unlock.SwipeUnlockDetector.Outcome.SWIPE_OK) {
+                    val vol = com.george.antirrobo.unlock.UnlockComboDetector.volumeActiveDuring(swipe.startTime, e.eventTime)
+                    EventLog.i(TAG, "Deslizamiento en menú falso, volumen=$vol")
+                    if (vol) {
+                        // Se cancela el toque en los hijos para que no cuente como botón/afuera.
+                        val c = MotionEvent.obtain(e).apply { action = MotionEvent.ACTION_CANCEL }
+                        super.dispatchTouchEvent(c)
+                        c.recycle()
+                        finish(onVolumeSwipe, "volumen + deslizar → menú real")
+                        return true
+                    }
+                }
+            }
+        }
+        return super.dispatchTouchEvent(e)
+    }
+
+    override fun dispatchDraw(canvas: Canvas) {
+        super.dispatchDraw(canvas)
+        if (!ghost) return
+        val d = resources.displayMetrics.density
+        val x = width / 2f
+        val y0 = height * 0.84f
+        val y1 = height * 0.66f
+        canvas.drawLine(x, y0, x, y1, hintLine)
+        canvas.drawLine(x, y1, x - 16 * d, y1 + 16 * d, hintLine)
+        canvas.drawLine(x, y1, x + 16 * d, y1 + 16 * d, hintLine)
+        canvas.drawText("Volumen + desliza ↑ = menú real", x, y1 - 12 * d, hintPaint)
+    }
 
     /** v0.1.4: SYSTEM = igual al menú real del Red Magic 11 Pro; CLASSIC = diseño v0.1.3. */
     enum class Style { SYSTEM, CLASSIC }

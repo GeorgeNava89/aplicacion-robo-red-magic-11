@@ -301,6 +301,12 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun useLightKey(context: Context, d: LightsDiagnostics.Diff) {
+        if (!com.george.antirrobo.FeatureFlags.FAN_CONTROL &&
+            com.george.antirrobo.nubia.NubiaHardwareController.isFanKey(d.key)
+        ) {
+            _ui.update { it.copy(lightsMessage = "Esa clave es del ventilador; el ventilador está desactivado") }
+            return
+        }
         prefs.rgbKeyTable = d.table
         prefs.rgbKeyName = d.key
         prefs.rgbOnValue = d.before ?: "1"

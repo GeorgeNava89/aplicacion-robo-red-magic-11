@@ -169,7 +169,7 @@ class AntirroboForegroundService : Service() {
             .setContentTitle(getString(R.string.fgs_notification_title))
             .setContentText(getString(R.string.fgs_notification_text))
             .setContentIntent(open)
-            .addAction(0, "Apagar luces", stripOff)
+            .apply { if (com.george.antirrobo.FeatureFlags.LIGHT_STRIP) addAction(0, "Apagar luces", stripOff) }
             .setOngoing(true)
             .setSilent(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)

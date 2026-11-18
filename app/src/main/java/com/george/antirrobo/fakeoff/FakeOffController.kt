@@ -11,6 +11,7 @@ import com.george.antirrobo.data.AppPreferences
 import com.george.antirrobo.data.AppStatus
 import com.george.antirrobo.unlock.AutoUnlockWatchdog
 import com.george.antirrobo.unlock.FingerprintUnlockActivity
+import com.george.antirrobo.unlock.GestureMapping
 import com.george.antirrobo.unlock.UnlockComboDetector
 import com.george.antirrobo.util.EventLog
 import java.lang.ref.WeakReference
@@ -125,11 +126,11 @@ object FakeOffController {
         val view = FakeOffOverlay(
             service = service,
             silencer = sil,
-            onUnlockGesture = { exit("gesto de desbloqueo (volumen + swipe)") },
-            onShutdownGesture = { requestTrueShutdown() },
-            onFailedUnlockAttempt = {
-                EventLog.i(TAG, "Intento de desbloqueo fallido. El auto-desbloqueo sigue corriendo.")
-                AppStatus.setLastEvent("Desbloqueo fallido; espera el auto-desbloqueo")
+            onCornerSequence = { handleGesture(GestureMapping.Screen.FAKE_OFF, GestureMapping.Gesture.CORNER_SEQUENCE) },
+            onVolumeSwipe = { handleGesture(GestureMapping.Screen.FAKE_OFF, GestureMapping.Gesture.VOLUME_SWIPE_UP) },
+            onSwipeWithoutVolume = {
+                EventLog.i(TAG, "Deslizamiento sin volumen: no hace nada. El auto-desbloqueo sigue corriendo.")
+                AppStatus.setLastEvent("Deslizamiento sin volumen; espera el auto-desbloqueo")
             },
             debugHints = prefs.ghostGuides && (demo || prefs.ghostGuidesReal),
         )
@@ -141,8 +142,8 @@ object FakeOffController {
         }
         overlay = view
 
-        // v0.1.5: apagar la Franja de luz SOLO si está encendida (opcional).
-        if (prefs.stripOffOnFakeOff) {
+        // v0.1.5: Franja de luz — DESACTIVADA en v0.1.6 (FeatureFlags.LIGHT_STRIP = false).
+        if (com.george.antirrobo.FeatureFlags.LIGHT_STRIP && prefs.stripOffOnFakeOff) {
             main.postDelayed({
                 if (active.get()) com.george.antirrobo.lightstrip.LightStripToggler.turnOffIfOn("apagado falso")
             }, 800L)
@@ -210,6 +211,20 @@ object FakeOffController {
      * retire, se reintenta si el sistema responde false y la ventana para dejar
      * pasar el diálogo dura 15 s (antes 8 s).
      */
+    /** v0.1.6: único punto donde se decide qué hace cada gesto (ver GestureMapping). */
+    fun handleGesture(screen: GestureMapping.Screen, gesture: GestureMapping.Gesture) {
+        val action = GestureMapping.resolve(screen, gesture)
+        EventLog.i(TAG, "Gesto $gesture en $screen → $action")
+        when (action) {
+            GestureMapping.Action.UNLOCK -> exit("5 toques en las esquinas (desbloqueo)")
+            GestureMapping.Action.REAL_POWER_DIALOG -> {
+                decoy?.let { d -> decoy = null; main.removeCallbacks(decoyTimeout); d.remove() }
+                requestTrueShutdown()
+            }
+            else -> Unit // los botones del menú falso se manejan en sus propios callbacks
+        }
+    }
+
     fun requestTrueShutdown() {
         val service = a11yRef?.get()
         if (service == null) {
@@ -219,7 +234,7 @@ object FakeOffController {
         EventLog.i(TAG, "Apagado real: se deja pasar GLOBAL_ACTION_POWER_DIALOG")
         powerDialogThrough.set(true)
         AppStatus.setLetPowerDialogThrough(true)
-        exit("gesto de apagado real (se abre el diálogo del sistema)")
+        exit("volumen + deslizar (se abre el menú real del sistema)")
         main.postDelayed({
             val ok = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_POWER_DIALOG)
             EventLog.i(TAG, "GLOBAL_ACTION_POWER_DIALOG intento 1 → $ok")
@@ -291,6 +306,8 @@ object FakeOffController {
             onPowerOff = { decoy = null; runSequence(ShutdownAnimation.Kind.SHUTDOWN, demo) },
             onRestart = { decoy = null; runSequence(ShutdownAnimation.Kind.RESTART, demo) },
             onEmergency = { decoy = null; openEmergencyDialer(service) },
+            onVolumeSwipe = { handleGesture(GestureMapping.Screen.DECOY_MENU, GestureMapping.Gesture.VOLUME_SWIPE_UP) },
+            ghost = AppPreferences.get(service).let { p -> p.ghostGuides && (demo || p.ghostGuidesReal) },
             onDismiss = {
                 decoy = null
                 main.removeCallbacks(decoyTimeout)

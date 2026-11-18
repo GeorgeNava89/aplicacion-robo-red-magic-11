@@ -9,6 +9,7 @@ import com.george.antirrobo.util.EventLog
 class LightStripActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != ACTION) return
+        if (!com.george.antirrobo.FeatureFlags.LIGHT_STRIP) return
         EventLog.init(context)
         // Se espera un poco a que se cierre el panel de notificaciones del toque.
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({

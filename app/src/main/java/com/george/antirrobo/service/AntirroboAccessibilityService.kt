@@ -105,8 +105,10 @@ class AntirroboAccessibilityService : AccessibilityService() {
                 // no cambia el volumen, no aparece el panel y no hay "tic" háptico
                 // del paso de volumen. En v0.1.0 isActive quedaba en false por el
                 // bug del overlay, así que el sistema procesaba la tecla y vibraba.
+                // v0.1.6: también con el menú falso visible (ahí Volumen + deslizar
+                // abre el menú real): sin panel de volumen ni vibración.
                 return FakeOffController.isActive || FakeOffController.isAnimating ||
-                    LockModeController.isCovering
+                    LockModeController.isCovering || FakeOffController.decoyShownAt() > 0L
             }
             KeyEvent.KEYCODE_BACK -> {
                 // v0.1.3: "Atrás" cierra el menú falso como el real. Se ignoran

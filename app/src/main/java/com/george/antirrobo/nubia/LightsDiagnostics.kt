@@ -23,14 +23,14 @@ import java.util.Locale
  * LÍMITES (no verificados en el Red Magic 11 Pro):
  *  - Android 12+ puede ocultar a apps de terceros algunas claves @hide.
  *    Si el escaneo sale vacío, usa adb (ver README):
- *      adb shell settings list system | grep -iE 'light|led|rgb|breath|ambient|fan|nubia|redmagic'
+ *      adb shell settings list system | grep -iE 'light|led|rgb|breath|ambient|nubia|redmagic'
  *  - Puede que Game Space guarde el estado fuera de Settings (en su propia
  *    base de datos) y que no cambie ninguna clave. Entonces este método no sirve.
  */
 object LightsDiagnostics {
 
     private const val TAG = "LightsDiag"
-    val KEY_PATTERN = Regex("light|led|rgb|breath|ambient|fan|nubia|redmagic|nb_|zte|lamp|malp|strip|atmosphere", RegexOption.IGNORE_CASE)
+    val KEY_PATTERN = Regex("light|led|rgb|breath|ambient|nubia|redmagic|nb_|zte|lamp|malp|strip|atmosphere", RegexOption.IGNORE_CASE)
 
     data class Entry(val table: String, val key: String, val value: String?)
     data class Diff(val table: String, val key: String, val before: String?, val after: String?)

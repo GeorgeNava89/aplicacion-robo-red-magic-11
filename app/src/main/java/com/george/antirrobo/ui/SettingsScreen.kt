@@ -417,7 +417,7 @@ private fun SettingsCard(
             FilledTonalButton(onClick = { onAction("lock_now") }) { Text("Bloquear ahora", maxLines = 1) }
             OutlinedButton(onClick = { onAction("lock_test") }) { Text("Probar (30 s)", maxLines = 1) }
         }
-        LightStripSection(ui, onAction)
+        if (com.george.antirrobo.FeatureFlags.LIGHT_STRIP) LightStripSection(ui, onAction) // v0.1.6: oculto
     }
 }
 
@@ -565,9 +565,11 @@ private fun HelpCard(
         Text("Ayuda", style = MaterialTheme.typography.titleMedium)
         Collapsible("Gestos") {
             HelpText(
-                "• Desbloquear: mantén VOLUMEN y desliza hacia arriba desde la mitad inferior izquierda " +
-                    "(empieza un poco arriba del borde, no desde el borde).\n" +
-                    "• Apagar de verdad: toca las esquinas sup-izq → sup-der → inf-der → inf-izq → centro " +
+                "• Botón de encendido → menú falso.\n" +
+                    "• En el menú falso: Apagar o Reiniciar → animación → apagado falso.\n" +
+                    "• Menú real del sistema: mantén VOLUMEN (+ o −) y desliza hacia arriba desde la mitad " +
+                    "inferior (en el menú falso o en el apagado falso; empieza arriba del borde).\n" +
+                    "• Desbloquear el apagado falso: toca sup-izq → sup-der → inf-der → inf-izq → centro " +
                     "(hasta 3 s entre toques).\n" +
                     "• \"Mostrar gestos fantasma\" dibuja las zonas exactas (1–5 y el deslizamiento) en las pruebas.\n" +
                     "• Si fallas, espera: vuelve solo en ${ui.timeoutSeconds} s.",
@@ -610,7 +612,7 @@ private fun HelpCard(
                 "• Sin root no se puede atrapar el botón de encendido; el menú puede verse un instante.\n" +
                     "• Encendido + volumen ~10 s fuerza el reinicio y no se puede bloquear.\n" +
                     "• Si Nubia cierra la app (batería/inicio automático), la protección se cae.\n" +
-                    "• Luces RGB y ventilador: intento no verificado.\n" +
+                    "• Luces RGB: intento no verificado. El ventilador ya no se controla.\n" +
                     "• Android 13+: si accesibilidad sale gris, en \"Ajustes restringidos\" usa ⋮ → Permitir.",
             )
         }
