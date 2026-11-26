@@ -595,6 +595,7 @@ private fun HelpCard(
         Collapsible("Cuándo se activa") {
             HelpText(
                 "• Solo al mantener presionado el botón de encendido (menú de apagado).\n" +
+                    "• Bajar el panel de notificaciones o Ajustes rápidos ya no lo activa.\n" +
                     "• \"Activar al bloquear pantalla\" también lo activa con la pulsación corta. Viene apagado.",
             )
         }

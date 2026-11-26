@@ -7,7 +7,7 @@ Paquete: `com.george.antirrobo`
 
 > **Esto es un prototipo del dueño del aparato, no un candado absoluto.** Sin root, Android no deja que una app atrape el botón de encendido *antes* que el sistema. El menú de apagado se detecta y se cierra lo más rápido posible, pero puede verse un instante, y alguien podría alcanzar a tocar “Apagar”. El reinicio forzado de hardware (encendido + volumen alrededor de 10 segundos) **no lo bloquea nadie**.
 
-> **Versión 0.1.6.** Ver *Cambios en v0.1.6*, *Cambios en v0.1.5*, *Cambios en v0.1.4*, *Cambios en v0.1.3*, *Cambios en v0.1.2*, *Cambios en v0.1.1* y *Huella digital en apagado falso* más abajo.
+> **Versión 0.1.7.** Ver *Cambios en v0.1.7*, *Cambios en v0.1.6*, *Cambios en v0.1.5*, *Cambios en v0.1.4*, *Cambios en v0.1.3*, *Cambios en v0.1.2*, *Cambios en v0.1.1* y *Huella digital en apagado falso* más abajo.
 
 Hay una **red de seguridad**: si el gesto de desbloqueo falla o algo sale mal, el teléfono se desbloquea solo a los **10 segundos** (configurable). El overlay se quita también si el servicio de accesibilidad se interrumpe o se destruye. El teléfono **nunca** queda bloqueado de forma permanente.
 
@@ -236,6 +236,14 @@ app/src/main/java/com/george/antirrobo/
 ```
 
 ---
+
+## Cambios en v0.1.7
+
+**Error:** con el modo armado, bajar el dedo desde la esquina superior izquierda (panel de notificaciones) mostraba el menú de apagado falso.
+
+**Causa:** el detector trataba como menú de apagado cualquier ventana de SystemUI cuyo texto mencionara "Apagar", "Reiniciar" o "Emergencia". En Red Magic, Ajustes rápidos trae un botón de apagado en el pie, y una notificación también puede decir esas palabras.
+
+**Cambio:** ahora solo cuenta el diálogo real (clases tipo `GlobalActionsDialog` y equivalentes). El panel de notificaciones, Ajustes rápidos y el botón de apagado del pie quedan fuera de forma explícita. El texto solo ya no basta. Cada decisión queda en `antirrobo_events.log` con paquete, clase y motivo (también las ventanas de sistema que se ignoran), por si en tu teléfono el nombre de la clase es distinto y hay que ajustarlo.
 
 ## Cambios en v0.1.6
 

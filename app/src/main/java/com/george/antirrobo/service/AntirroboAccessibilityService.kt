@@ -66,15 +66,15 @@ class AntirroboAccessibilityService : AccessibilityService() {
         // interpreta el panel como menú de apagado.
         if (com.george.antirrobo.lightstrip.LightStripToggler.isBusy) return
         val prefs = AppPreferences.get(this)
+        val windowEvent = event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
         if (prefs.diagnosticWindows && event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             EventLog.i(TAG, "DIAG ventana: ${describe(event)}")
         }
         // v0.1.4: con "Bloqueo con luces" (sin modo armado) el menú de apagado
         // real solo se cierra; no hay menú falso ni apagado falso.
         if (!prefs.armed && LockModeController.isCovering && !FakeOffController.letPowerDialogThrough &&
-            (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-                event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) &&
-            (looksLikePowerMenu(event) || anyWindowLooksLikePowerMenu())
+            windowEvent && isRealPowerMenu(event)
         ) {
             EventLog.i(TAG, "Bloqueo con luces: menú de apagado cerrado")
             lastOwnBackAt = SystemClock.uptimeMillis()
@@ -85,13 +85,8 @@ class AntirroboAccessibilityService : AccessibilityService() {
         if (!prefs.armed) return
         if (FakeOffController.letPowerDialogThrough) return
 
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-            event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
-        ) {
-            if (looksLikePowerMenu(event) || anyWindowLooksLikePowerMenu()) {
-                EventLog.i(TAG, "Menú de apagado detectado: ${describe(event)}")
-                dismissPowerMenuThenFakeOff("menú de apagado detectado")
-            }
+        if (windowEvent && isRealPowerMenu(event)) {
+            dismissPowerMenuThenFakeOff("menú de apagado detectado")
         }
     }
 
@@ -232,38 +227,55 @@ class AntirroboAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Heurística: paquete systemui/android + clase o texto típicos del menú de apagado.
-     * Nubia puede usar un nombre de clase propio; por eso existe el modo diagnóstico
-     * (registra paquete, clase y texto para completar esta lista en el dispositivo real).
+     * v0.1.7: solo el diálogo GlobalActions real. El panel de notificaciones
+     * y Ajustes rápidos (aunque digan "Apagar") quedan fuera.
      */
-    private fun looksLikePowerMenu(event: AccessibilityEvent): Boolean {
+    private fun isRealPowerMenu(event: AccessibilityEvent): Boolean {
+        val fromEvent = classifyEvent(event)
+        if (fromEvent.match) {
+            EventLog.i(TAG, "Menú de apagado DETECTADO (evento): ${fromEvent.reason} | ${describe(event)}")
+            return true
+        }
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            val pkg = event.packageName?.toString().orEmpty()
+            if (PowerMenuClassifier.isSystemPackage(pkg.lowercase())) {
+                EventLog.i(TAG, "Ventana de sistema ignorada (no es el menú de apagado): ${fromEvent.reason} | ${describe(event)}")
+            }
+        }
+        val fromWindows = classifyOpenWindows()
+        if (fromWindows != null && fromWindows.match) {
+            EventLog.i(TAG, "Menú de apagado DETECTADO (ventana): ${fromWindows.reason} | evento ${describe(event)}")
+            return true
+        }
+        return false
+    }
+
+    private fun classifyEvent(event: AccessibilityEvent): PowerMenuClassifier.Verdict {
         val pkg = event.packageName?.toString().orEmpty()
         val cls = event.className?.toString().orEmpty()
         val text = event.text?.joinToString(" ").orEmpty()
         val desc = event.contentDescription?.toString().orEmpty()
-        return matchesPowerMenu(pkg, cls, "$text $desc")
+        return PowerMenuClassifier.classify(pkg, cls, "$text $desc")
     }
 
-    private fun anyWindowLooksLikePowerMenu(): Boolean {
+    private fun classifyOpenWindows(): PowerMenuClassifier.Verdict? {
         return try {
-            windows?.any { w ->
+            windows?.asSequence()?.mapNotNull { w ->
                 val pkg = w.root?.packageName?.toString().orEmpty()
                 val cls = w.root?.className?.toString().orEmpty()
-                val title = if (Build.VERSION.SDK_INT >= 33) {
-                    w.title?.toString().orEmpty()
-                } else {
-                    ""
-                }
+                val title = if (Build.VERSION.SDK_INT >= 33) w.title?.toString().orEmpty() else ""
                 val typeOk = w.type == AccessibilityWindowInfo.TYPE_SYSTEM ||
                     w.type == AccessibilityWindowInfo.TYPE_APPLICATION ||
                     (Build.VERSION.SDK_INT >= 33 && w.type == AccessibilityWindowInfo.TYPE_MAGNIFICATION_OVERLAY)
-                typeOk && matchesPowerMenu(pkg, cls, title)
-            } == true
+                if (!typeOk) null else PowerMenuClassifier.classify(pkg, cls, title = title)
+            }?.firstOrNull { it.match }
         } catch (t: Throwable) {
             EventLog.w(TAG, "No se pudieron inspeccionar las ventanas", t)
-            false
+            null
         }
     }
+
+    private fun anyWindowLooksLikePowerMenu(): Boolean = classifyOpenWindows()?.match == true
 
     private fun describe(event: AccessibilityEvent): String {
         return "pkg=${event.packageName} class=${event.className} text=${event.text} " +
@@ -273,70 +285,8 @@ class AntirroboAccessibilityService : AccessibilityService() {
     companion object {
         private const val TAG = "AntirroboA11y"
 
-        /**
-         * Paquetes donde suele vivir el menú de apagado. Se incluye
-         * com.android.systemui y android. Nubia puede usar un paquete
-         * propio: agrégalo cuando el diagnóstico lo muestre. Las entradas
-         * con "nubia"/"zte"/"redmagic" son hipótesis, no hechos verificados.
-         */
-        private val SYSTEM_PACKAGES = setOf(
-            "com.android.systemui",
-            "android",
-            "com.android.server.policy",
-            // Hipótesis OEM (NO VERIFICADAS en Red Magic 11 Pro):
-            "com.nubia.systemui",
-            "cn.nubia.systemui",
-            "com.zte.systemui",
-        )
-
-        private val CLASS_HINTS = listOf(
-            "GlobalActions",
-            "GlobalActionsDialog",
-            "GlobalActionsDialogLite",
-            "GlobalActionsPopup",
-            "MiuiGlobalActions",
-            "ShutdownUi",
-            "ShutdownDialog",
-            "PowerOff",
-            "PowerMenu",
-            "PowerDialog",
-            "EmergencyPanel",
-            "EmergencyAffordance",
-            "AlertController",
-            // Hipótesis OEM, NO VERIFICADAS:
-            "NubiaGlobalActions",
-            "NubiaPowerMenu",
-            "RedMagicGlobalActions",
-        )
-
-        private val TEXT_HINTS = listOf(
-            "apag",          // Apagar, Apagado
-            "reinici",       // Reiniciar
-            "power off",
-            "shut down",
-            "shutdown",
-            "restart",
-            "reboot",
-            "emergencia",
-            "emergency",
-            "apagar el dispositivo",
-        )
-
-        fun matchesPowerMenu(pkg: String, cls: String, text: String): Boolean {
-            val pkgL = pkg.lowercase()
-            // Nunca confundir nuestras propias ventanas (menú falso) con el menú real.
-            if (pkgL.startsWith("com.george.antirrobo")) return false
-            val clsSimple = cls.substringAfterLast('.')
-            val classHit = CLASS_HINTS.any { hint ->
-                cls.contains(hint, ignoreCase = true) || clsSimple.equals(hint, ignoreCase = true)
-            }
-            val textHit = TEXT_HINTS.any { text.contains(it, ignoreCase = true) }
-            val systemPkg = SYSTEM_PACKAGES.any { pkgL == it || pkgL.startsWith("$it.") } ||
-                pkgL.contains("systemui")
-            if (classHit && (systemPkg || pkg.isEmpty())) return true
-            // Texto típico + paquete de sistema (evita falsos positivos en apps de usuario).
-            if (textHit && systemPkg) return true
-            return false
-        }
+        /** Conservado por si algún test interno lo llama; la lógica vive en [PowerMenuClassifier]. */
+        fun matchesPowerMenu(pkg: String, cls: String, text: String): Boolean =
+            PowerMenuClassifier.isMatch(pkg, cls, text)
     }
 }
